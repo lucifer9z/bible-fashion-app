@@ -107,6 +107,61 @@ export default function Dashboard() {
   if (contentCount < 3) warnings.push({ text: `Chỉ ${contentCount} content tuần này — cần ≥ 3`, type: 'orange', icon: '⚠️' });
   skuWarnings.forEach(w => warnings.push({ text: `Tồn kho sắp hết: ${w}`, type: 'orange', icon: '⚠️' }));
 
+  // === #1: DIAGNOSTIC AUTO-DETECT (Bible 08-DATA) ===
+  const diagnostics: { text: string; action: string; type: string; icon: string }[] = [];
+  if (hasData) {
+    // No orders diagnostic tree
+    if (totalOrders === 0 && today.fb_spend > 0) {
+      if (today.fb_inbox === 0) {
+        diagnostics.push({ text: 'Spend > 0 nhưng 0 inbox', action: '→ Creative yếu — ĐỔI VIDEO ngay', type: 'red', icon: '🎬' });
+      } else if (today.fb_inbox > 0 && today.fb_orders === 0) {
+        diagnostics.push({ text: `${today.fb_inbox} inbox nhưng 0 đơn FB`, action: '→ Script chốt yếu — SỬA SCRIPT', type: 'red', icon: '💬' });
+      }
+    } else if (totalOrders > 0) {
+      // Close rate low
+      const cr = today.fb_inbox > 0 ? (today.fb_orders / today.fb_inbox * 100) : 0;
+      if (cr > 0 && cr < 15) {
+        diagnostics.push({ text: `Tỷ lệ chốt ${cr.toFixed(0)}% (< 15%)`, action: '→ Cải thiện script chốt + offer', type: 'orange', icon: '💬' });
+      }
+      // Delivery low
+      if (today.fl_shipped > 0 && today.fl_delivered / today.fl_shipped < 0.8) {
+        diagnostics.push({ text: `Giao thành ${Math.round(today.fl_delivered / today.fl_shipped * 100)}% (< 80%)`, action: '→ Tăng confirm COD + check địa chỉ', type: 'orange', icon: '📦' });
+      }
+      // Return high
+      if (today.fl_return > 0 && today.fl_shipped > 0 && today.fl_return / today.fl_shipped > 0.15) {
+        diagnostics.push({ text: `Hoàn ${Math.round(today.fl_return / today.fl_shipped * 100)}% (> 15%)`, action: '→ Check chất lượng SP + size chart', type: 'red', icon: '🔄' });
+      }
+    }
+    // Spend but no profit
+    if (totalSpend > 0 && totalRevenue > 0 && roas < 2.0) {
+      diagnostics.push({ text: `ROAS ${roas} — đang LỖ (< 2.0)`, action: '→ Tăng tỷ trọng FB Ads, giảm sàn', type: 'red', icon: '📉' });
+    }
+  }
+
+  // === #2: ADS SCALE/CẮT RECOMMENDATION (Bible 05-DISTRIBUTION) ===
+  const adsRecs: { text: string; type: string; icon: string }[] = [];
+  if (hasData && today.fb_spend > 0) {
+    if (cpa <= 25 && today.fb_orders >= 3) {
+      adsRecs.push({ text: `CPA ${cpa}K + ${today.fb_orders} đơn → SCALE +20% budget`, type: 'green', icon: '🚀' });
+    } else if (cpa <= 25 && today.fb_orders < 3) {
+      adsRecs.push({ text: `CPA ${cpa}K tốt nhưng ít đơn → GIỮ, chờ thêm data`, type: 'blue', icon: '⏳' });
+    } else if (cpa > 25 && cpa <= 40 && today.fb_orders >= 3) {
+      adsRecs.push({ text: `CPA ${cpa}K khá cao → GIỮ budget, TEST creative mới`, type: 'yellow', icon: '🔄' });
+    } else if (cpa > 25 && cpa <= 40 && today.fb_orders < 3) {
+      adsRecs.push({ text: `CPA ${cpa}K + ít đơn → ĐỔI creative + check targeting`, type: 'orange', icon: '⚠️' });
+    } else if (cpa > 40 && today.fb_orders >= 3) {
+      adsRecs.push({ text: `CPA ${cpa}K quá cao → CẮT ad set thua, giữ ad set thắng`, type: 'red', icon: '✂️' });
+    } else if (cpa > 40 && today.fb_orders < 3) {
+      adsRecs.push({ text: `CPA ${cpa}K + 0-2 đơn → CẮT NGAY, đổi toàn bộ creative`, type: 'red', icon: '🛑' });
+    }
+    // ROAS recommendation
+    if (roas >= 3.5) {
+      adsRecs.push({ text: `ROAS ${roas} xuất sắc → Scale mạnh kênh FB, đây là goldmine`, type: 'green', icon: '💰' });
+    } else if (roas >= 2.0 && roas < 3.5) {
+      adsRecs.push({ text: `ROAS ${roas} ổn → Tối ưu creative để đẩy lên >3.5`, type: 'blue', icon: '📈' });
+    }
+  }
+
   // Reminders
   const reminders = [
     { time: '08:30', text: 'Họp team buổi sáng', status: 'done' },
@@ -309,24 +364,58 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Row: Warnings + Reminders */}
+      {/* Row: Warnings + Ads Recommendations */}
       <div className="dashboard-grid-2">
-        {/* Warnings */}
+        {/* Warnings + Diagnostics */}
         <div className="card">
           <div className="card-title">⚠️ Cảnh báo vận hành</div>
-          {warnings.length === 0 ? (
+          {warnings.length === 0 && diagnostics.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 20, color: 'var(--green)', fontSize: 13 }}>✅ Không có cảnh báo — mọi thứ ổn!</div>
           ) : (
-            warnings.map((w, i) => (
-              <div className="warning-item" key={i}>
-                <div className={`warning-icon ${w.type}`}>{w.icon}</div>
-                <div className="warning-text">{w.text}</div>
-                <div className="warning-arrow">›</div>
+            <>
+              {warnings.map((w, i) => (
+                <div className="warning-item" key={`w-${i}`}>
+                  <div className={`warning-icon ${w.type}`}>{w.icon}</div>
+                  <div className="warning-text">{w.text}</div>
+                  <div className="warning-arrow">›</div>
+                </div>
+              ))}
+              {diagnostics.length > 0 && (
+                <div style={{ borderTop: '1px solid var(--bg-card-border)', marginTop: 8, paddingTop: 8 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>🔍 Chẩn đoán nghẽn</div>
+                  {diagnostics.map((d, i) => (
+                    <div className="warning-item" key={`d-${i}`}>
+                      <div className={`warning-icon ${d.type}`}>{d.icon}</div>
+                      <div className="warning-text">
+                        <div>{d.text}</div>
+                        <div style={{ color: d.type === 'red' ? 'var(--red)' : 'var(--yellow)', fontWeight: 600, fontSize: 12, marginTop: 2 }}>{d.action}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Ads Recommendations */}
+        <div className="card">
+          <div className="card-title">📢 Gợi ý Ads</div>
+          {adsRecs.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>Nhập số liệu FB Ads để nhận gợi ý</div>
+          ) : (
+            adsRecs.map((r, i) => (
+              <div className="warning-item" key={`a-${i}`}>
+                <div className={`warning-icon ${r.type}`} style={r.type === 'green' ? { background: 'var(--green-bg)' } : r.type === 'blue' ? { background: 'var(--blue-bg)' } : undefined}>{r.icon}</div>
+                <div className="warning-text" style={{ color: r.type === 'green' ? 'var(--green)' : r.type === 'red' ? 'var(--red)' : undefined, fontWeight: 600 }}>{r.text}</div>
               </div>
             ))
           )}
         </div>
+      </div>
 
+      {/* Row: Reminders + Weekly Review */}
+      <div className="dashboard-grid-2">
         {/* Reminders */}
         <div className="card">
           <div className="card-title">🔔 Nhắc việc</div>
@@ -338,6 +427,21 @@ export default function Dashboard() {
               <span className="warning-arrow">›</span>
             </div>
           ))}
+        </div>
+
+        {/* Weekly Review Link */}
+        <div className="card">
+          <div className="card-title">📋 Review tuần</div>
+          <Link href="/weekly-review" style={{ textDecoration: 'none' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: 'var(--accent-soft)', borderRadius: 'var(--radius-md)', cursor: 'pointer', transition: 'all 0.2s' }}>
+              <div style={{ fontSize: 28 }}>📊</div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2, color: 'var(--text-primary)' }}>Xem báo cáo tuần</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Tổng hợp 7 ngày: đơn, doanh thu, CPA, ROAS, P&L</div>
+              </div>
+              <div style={{ marginLeft: 'auto', color: 'var(--accent)', fontSize: 18 }}>→</div>
+            </div>
+          </Link>
         </div>
       </div>
     </div>
