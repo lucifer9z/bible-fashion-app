@@ -1,10 +1,31 @@
--- BibleFashion Phase 2 — Database Schema
--- Run this in Supabase SQL Editor
+-- ==========================================
+-- BibleFashion — FULL DATABASE (chạy 1 lần)
+-- Copy toàn bộ → Supabase SQL Editor → Run
+-- ==========================================
 
--- Daily data (số liệu ngày)
+-- 0. Xóa bảng cũ (nếu có)
+DROP TABLE IF EXISTS daily_data CASCADE;
+DROP TABLE IF EXISTS tasks CASCADE;
+DROP TABLE IF EXISTS war_stories CASCADE;
+DROP TABLE IF EXISTS skus CASCADE;
+DROP TABLE IF EXISTS content_items CASCADE;
+DROP TABLE IF EXISTS settings CASCADE;
+DROP TABLE IF EXISTS stores CASCADE;
+
+-- 1. Bảng STORES (quản lý nhiều cửa hàng)
+CREATE TABLE stores (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name TEXT NOT NULL,
+  icon TEXT DEFAULT '🏪',
+  color TEXT DEFAULT '#7c6cf0',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 2. Daily data (số liệu ngày)
 CREATE TABLE daily_data (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  date DATE NOT NULL UNIQUE,
+  date DATE NOT NULL,
+  store_id UUID REFERENCES stores(id),
   fb_spend INT DEFAULT 0,
   fb_inbox INT DEFAULT 0,
   fb_orders INT DEFAULT 0,
@@ -21,13 +42,15 @@ CREATE TABLE daily_data (
   fl_delivered INT DEFAULT 0,
   fl_boom INT DEFAULT 0,
   fl_return INT DEFAULT 0,
-  created_at TIMESTAMPTZ DEFAULT now()
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(date, store_id)
 );
 
--- Tasks
+-- 3. Tasks
 CREATE TABLE tasks (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   date DATE NOT NULL,
+  store_id UUID REFERENCES stores(id),
   text TEXT NOT NULL,
   role TEXT NOT NULL,
   time_slot TEXT NOT NULL DEFAULT 'morning',
@@ -35,9 +58,10 @@ CREATE TABLE tasks (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- War Stories
+-- 4. War Stories
 CREATE TABLE war_stories (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  store_id UUID REFERENCES stores(id),
   title TEXT NOT NULL,
   module TEXT,
   author TEXT,
@@ -48,11 +72,12 @@ CREATE TABLE war_stories (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- SKUs (quản lý sản phẩm)
+-- 5. SKUs (quản lý sản phẩm)
 CREATE TABLE skus (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  store_id UUID REFERENCES stores(id),
   name TEXT NOT NULL,
-  code TEXT UNIQUE NOT NULL,
+  code TEXT NOT NULL,
   category TEXT DEFAULT 'jean',
   cost_price INT DEFAULT 0,
   sell_price_fb INT DEFAULT 0,
@@ -62,10 +87,11 @@ CREATE TABLE skus (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Content Calendar
+-- 6. Content Calendar
 CREATE TABLE content_items (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   date DATE NOT NULL,
+  store_id UUID REFERENCES stores(id),
   title TEXT NOT NULL,
   type TEXT DEFAULT 'video',
   platform TEXT DEFAULT 'tiktok',
@@ -75,14 +101,15 @@ CREATE TABLE content_items (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Settings (project start date, etc.)
+-- 7. Settings
 CREATE TABLE settings (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   key TEXT UNIQUE NOT NULL,
   value TEXT
 );
 
--- Enable Row Level Security
+-- 8. Enable Row Level Security
+ALTER TABLE stores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE daily_data ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE war_stories ENABLE ROW LEVEL SECURITY;
@@ -90,14 +117,16 @@ ALTER TABLE skus ENABLE ROW LEVEL SECURITY;
 ALTER TABLE content_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
 
--- Public read/write policies (for team use — all authenticated users)
-CREATE POLICY "Allow all for authenticated" ON daily_data FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for authenticated" ON tasks FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for authenticated" ON war_stories FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for authenticated" ON skus FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for authenticated" ON content_items FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for authenticated" ON settings FOR ALL USING (true) WITH CHECK (true);
+-- 9. Public policies (team use)
+CREATE POLICY "Allow all" ON stores FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all" ON daily_data FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all" ON tasks FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all" ON war_stories FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all" ON skus FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all" ON content_items FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all" ON settings FOR ALL USING (true) WITH CHECK (true);
 
--- Insert default settings
+-- 10. Default data
+INSERT INTO stores (name, icon, color) VALUES ('BibleFashion', '👔', '#7c6cf0');
 INSERT INTO settings (key, value) VALUES ('start_date', NULL);
 INSERT INTO settings (key, value) VALUES ('project_name', 'BibleFashion');
