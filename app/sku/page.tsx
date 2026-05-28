@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase';
+import { useStore } from '@/lib/store-context';
 
 interface SKU { id: string; name: string; code: string; category: string; cost_price: number; sell_price_fb: number; sell_price_shopee: number; sell_price_tiktok: number; stock: number; }
 
@@ -9,17 +10,19 @@ export default function SkuPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', code: '', category: 'jean', cost_price: 80, sell_price_fb: 199, sell_price_shopee: 269, sell_price_tiktok: 279, stock: 100 });
   const supabase = createClient();
+  const { activeStoreId, storeFilter } = useStore();
 
-  useEffect(() => { loadSkus(); }, []);
+  useEffect(() => { loadSkus(); }, [activeStoreId]);
 
   async function loadSkus() {
-    const { data } = await supabase.from('skus').select('*').order('created_at');
+    const q = storeFilter(supabase.from('skus').select('*')).order('created_at');
+    const { data } = await q;
     if (data) setSkus(data);
   }
 
   async function addSku() {
     if (!form.name.trim() || !form.code.trim()) return;
-    await supabase.from('skus').insert(form);
+    await supabase.from('skus').insert({ ...form, ...(activeStoreId ? { store_id: activeStoreId } : {}) });
     setForm({ name: '', code: '', category: 'jean', cost_price: 80, sell_price_fb: 199, sell_price_shopee: 269, sell_price_tiktok: 279, stock: 100 });
     setShowForm(false);
     loadSkus();

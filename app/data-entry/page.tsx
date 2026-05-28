@@ -2,9 +2,11 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase';
 import { KPI_BENCHMARKS } from '@/lib/bible-data';
+import { useStore } from '@/lib/store-context';
 
 export default function DataEntryPage() {
   const supabase = createClient();
+  const { activeStoreId, storeFilter } = useStore();
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [form, setForm] = useState({
     fb_spend: 0, fb_inbox: 0, fb_orders: 0, fb_revenue: 0,
@@ -14,10 +16,12 @@ export default function DataEntryPage() {
   });
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => { loadData(); }, [date]);
+  useEffect(() => { loadData(); }, [date, activeStoreId]);
 
   async function loadData() {
-    const { data } = await supabase.from('daily_data').select('*').eq('date', date).single();
+    let q = supabase.from('daily_data').select('*').eq('date', date);
+    if (activeStoreId) q = q.eq('store_id', activeStoreId);
+    const { data } = await q.limit(1).single();
     if (data) {
       setForm({
         fb_spend: data.fb_spend || 0, fb_inbox: data.fb_inbox || 0, fb_orders: data.fb_orders || 0, fb_revenue: data.fb_revenue || 0,
@@ -31,7 +35,9 @@ export default function DataEntryPage() {
   }
 
   async function saveData() {
-    const { error } = await supabase.from('daily_data').upsert({ date, ...form }, { onConflict: 'date' });
+    const payload: any = { date, ...form };
+    if (activeStoreId) payload.store_id = activeStoreId;
+    const { error } = await supabase.from('daily_data').upsert(payload, { onConflict: 'date' });
     if (!error) { setSaved(true); setTimeout(() => setSaved(false), 2000); }
   }
 

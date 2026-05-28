@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase';
+import { useStore } from '@/lib/store-context';
 import { KPI_BENCHMARKS, DECISION_GATES } from '@/lib/bible-data';
 
 interface DailyData {
@@ -15,8 +16,9 @@ export default function WeeklyReviewPage() {
   const [data, setData] = useState<DailyData[]>([]);
   const [prevWeekData, setPrevWeekData] = useState<DailyData[]>([]);
   const supabase = createClient();
+  const { activeStoreId, storeFilter } = useStore();
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [activeStoreId]);
 
   async function loadData() {
     const dates: string[] = [];
@@ -29,10 +31,12 @@ export default function WeeklyReviewPage() {
       const d = new Date(); d.setDate(d.getDate() - i);
       prevDates.push(d.toISOString().slice(0, 10));
     }
-    const { data: rows } = await supabase.from('daily_data').select('*').in('date', dates).order('date');
+    const q1 = storeFilter(supabase.from('daily_data').select('*').in('date', dates)).order('date');
+    const { data: rows } = await q1;
     if (rows) setData(rows as DailyData[]);
 
-    const { data: prevRows } = await supabase.from('daily_data').select('*').in('date', prevDates).order('date');
+    const q2 = storeFilter(supabase.from('daily_data').select('*').in('date', prevDates)).order('date');
+    const { data: prevRows } = await q2;
     if (prevRows) setPrevWeekData(prevRows as DailyData[]);
   }
 

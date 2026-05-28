@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase';
+import { useStore } from '@/lib/store-context';
 import { ROLES } from '@/lib/bible-data';
 
 interface Story { id: string; title: string; module: string; author: string; content: string; before_data: string; after_data: string; lesson: string; created_at: string; }
@@ -10,17 +11,19 @@ export default function WarStoriesPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: '', module: '01-RESEARCH', author: 'leader', content: '', before_data: '', after_data: '', lesson: '' });
   const supabase = createClient();
+  const { activeStoreId, storeFilter } = useStore();
 
-  useEffect(() => { loadStories(); }, []);
+  useEffect(() => { loadStories(); }, [activeStoreId]);
 
   async function loadStories() {
-    const { data } = await supabase.from('war_stories').select('*').order('created_at', { ascending: false });
+    const q = storeFilter(supabase.from('war_stories').select('*')).order('created_at', { ascending: false });
+    const { data } = await q;
     if (data) setStories(data);
   }
 
   async function saveStory() {
     if (!form.title.trim() || !form.content.trim()) return;
-    await supabase.from('war_stories').insert(form);
+    await supabase.from('war_stories').insert({ ...form, ...(activeStoreId ? { store_id: activeStoreId } : {}) });
     setForm({ title: '', module: '01-RESEARCH', author: 'leader', content: '', before_data: '', after_data: '', lesson: '' });
     setShowForm(false);
     loadStories();

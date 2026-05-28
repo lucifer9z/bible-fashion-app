@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase';
 import { KPI_BENCHMARKS } from '@/lib/bible-data';
+import { useStore } from '@/lib/store-context';
 import Link from 'next/link';
 import { exportToPng } from '@/lib/export';
 import { requestNotificationPermission } from '@/lib/notifications';
@@ -23,6 +24,7 @@ export default function Dashboard() {
   const [skuWarnings, setSkuWarnings] = useState<string[]>([]);
   const [contentCount, setContentCount] = useState(0);
   const supabase = createClient();
+  const { activeStoreId, storeFilter } = useStore();
   const todayStr = new Date().toISOString().slice(0, 10);
 
   useEffect(() => {
@@ -30,30 +32,37 @@ export default function Dashboard() {
     loadData();
     loadTasks();
     loadWarningData();
-  }, []);
+  }, [activeStoreId]);
 
   async function loadData() {
     const dates: string[] = [];
     for (let i = 6; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); dates.push(d.toISOString().slice(0, 10)); }
-    const { data: rows } = await supabase.from('daily_data').select('*').in('date', dates).order('date');
+    const q = storeFilter(supabase.from('daily_data').select('*').in('date', dates)).order('date');
+    const { data: rows } = await q;
     if (rows) setData(rows as DailyData[]);
 
     const yd = new Date(); yd.setDate(yd.getDate() - 1);
-    const { data: ydRow } = await supabase.from('daily_data').select('*').eq('date', yd.toISOString().slice(0, 10)).single();
+    const q2 = storeFilter(supabase.from('daily_data').select('*').eq('date', yd.toISOString().slice(0, 10)));
+    const { data: ydRow } = await q2.limit(1).single();
     if (ydRow) setYesterday(ydRow as DailyData);
+    else setYesterday(null);
   }
 
   async function loadTasks() {
-    const { data: rows } = await supabase.from('tasks').select('*').eq('date', todayStr).order('time_slot').limit(5);
+    const q = storeFilter(supabase.from('tasks').select('*').eq('date', todayStr)).order('time_slot').limit(5);
+    const { data: rows } = await q;
     if (rows) setTasks(rows);
   }
 
   async function loadWarningData() {
-    const { data: lowStock } = await supabase.from('skus').select('name, stock').lt('stock', 20);
+    const q1 = storeFilter(supabase.from('skus').select('name, stock').lt('stock', 20));
+    const { data: lowStock } = await q1;
     if (lowStock) setSkuWarnings(lowStock.map((s: any) => `${s.name} (còn ${s.stock})`));
+    else setSkuWarnings([]);
 
     const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
-    const { count } = await supabase.from('content_items').select('*', { count: 'exact', head: true }).gte('date', weekStart.toISOString().slice(0, 10));
+    const q2 = storeFilter(supabase.from('content_items').select('*', { count: 'exact', head: true }).gte('date', weekStart.toISOString().slice(0, 10)));
+    const { count } = await q2;
     setContentCount(count || 0);
   }
 

@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase';
 import { DEFAULT_TASKS, ROLES } from '@/lib/bible-data';
+import { useStore } from '@/lib/store-context';
 
 interface Task { id: string; date: string; text: string; role: string; time_slot: string; done: boolean; }
 
@@ -12,20 +13,22 @@ export default function TasksPage() {
   const [newRole, setNewRole] = useState('leader');
   const [newTime, setNewTime] = useState('morning');
   const supabase = createClient();
+  const { activeStoreId, storeFilter } = useStore();
   const today = new Date().toISOString().slice(0, 10);
 
-  useEffect(() => { loadTasks(); }, []);
+  useEffect(() => { loadTasks(); }, [activeStoreId]);
 
   async function loadTasks() {
-    const { data } = await supabase.from('tasks').select('*').eq('date', today).order('time_slot');
+    const q = storeFilter(supabase.from('tasks').select('*').eq('date', today)).order('time_slot');
+    const { data } = await q;
     if (data && data.length > 0) setTasks(data);
-    else await generateDefaultTasks();
+    else { setTasks([]); await generateDefaultTasks(); }
   }
 
   async function generateDefaultTasks() {
-    const newTasks: Omit<Task, 'id'>[] = [];
+    const newTasks: any[] = [];
     Object.entries(DEFAULT_TASKS).forEach(([role, items]) => {
-      items.forEach(t => newTasks.push({ date: today, text: t.text, role, time_slot: t.time, done: false }));
+      items.forEach(t => newTasks.push({ date: today, text: t.text, role, time_slot: t.time, done: false, ...(activeStoreId ? { store_id: activeStoreId } : {}) }));
     });
     const { data } = await supabase.from('tasks').insert(newTasks).select();
     if (data) setTasks(data);
@@ -38,7 +41,7 @@ export default function TasksPage() {
 
   async function addTask() {
     if (!newText.trim()) return;
-    const { data } = await supabase.from('tasks').insert({ date: today, text: newText, role: newRole, time_slot: newTime, done: false }).select();
+    const { data } = await supabase.from('tasks').insert({ date: today, text: newText, role: newRole, time_slot: newTime, done: false, ...(activeStoreId ? { store_id: activeStoreId } : {}) }).select();
     if (data) { setTasks([...tasks, ...data]); setNewText(''); }
   }
 

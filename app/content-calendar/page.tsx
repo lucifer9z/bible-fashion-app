@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase';
+import { useStore } from '@/lib/store-context';
 import { CONTENT_STATUSES, ROLES } from '@/lib/bible-data';
 
 interface ContentItem { id: string; date: string; title: string; type: string; platform: string; status: string; assigned_to: string; notes: string; }
@@ -12,6 +13,7 @@ export default function ContentCalendarPage() {
   const [form, setForm] = useState({ title: '', type: 'video', platform: 'tiktok', assigned_to: 'media', notes: '' });
   const [platformFilter, setPlatformFilter] = useState('all');
   const supabase = createClient();
+  const { activeStoreId, storeFilter } = useStore();
 
   const getWeekDates = () => {
     const now = new Date();
@@ -26,16 +28,17 @@ export default function ContentCalendarPage() {
 
   const weekDates = getWeekDates();
 
-  useEffect(() => { loadItems(); }, [weekOffset]);
+  useEffect(() => { loadItems(); }, [weekOffset, activeStoreId]);
 
   async function loadItems() {
-    const { data } = await supabase.from('content_items').select('*').gte('date', weekDates[0]).lte('date', weekDates[6]).order('created_at');
+    const q = storeFilter(supabase.from('content_items').select('*').gte('date', weekDates[0]).lte('date', weekDates[6])).order('created_at');
+    const { data } = await q;
     if (data) setItems(data);
   }
 
   async function addItem(date: string) {
     if (!form.title.trim()) return;
-    await supabase.from('content_items').insert({ date, ...form, status: 'idea' });
+    await supabase.from('content_items').insert({ date, ...form, status: 'idea', ...(activeStoreId ? { store_id: activeStoreId } : {}) });
     setForm({ title: '', type: 'video', platform: 'tiktok', assigned_to: 'media', notes: '' });
     setShowAdd(null);
     loadItems();
