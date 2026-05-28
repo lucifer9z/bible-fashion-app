@@ -37,7 +37,7 @@ export default function WarStoriesPage() {
       </div>
 
       {showForm && (
-        <div className="glass panel" style={{ marginBottom: 20 }}>
+        <div className="card panel" style={{ marginBottom: 20 }}>
           <div className="form-grid">
             <div className="input-group"><label>Tiêu đề</label><input className="form-control" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} /></div>
             <div className="input-group"><label>Module</label>

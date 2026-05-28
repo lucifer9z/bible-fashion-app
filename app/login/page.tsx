@@ -34,7 +34,7 @@ export default function LoginPage() {
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: 20 }}>
-      <div className="glass" style={{ padding: 40, maxWidth: 420, width: '100%' }}>
+      <div className="card" style={{ padding: 40, maxWidth: 420, width: '100%' }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{ fontSize: 40, marginBottom: 8 }}>📖</div>
           <h1 style={{ fontSize: 22, fontWeight: 800, background: 'linear-gradient(135deg, #7c6cf0, #a78bfa, #c084fc)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>BibleFashion</h1>

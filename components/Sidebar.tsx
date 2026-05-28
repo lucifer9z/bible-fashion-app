@@ -1,20 +1,46 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BIBLE_MODULES, ROLES } from '@/lib/bible-data';
-import {
-  House, ListChecks, BookOpen, ChartBar, Robot,
-  Notebook, CalendarDots, Package, SignOut, MagnifyingGlass, Bell
-} from '@phosphor-icons/react';
+import { BIBLE_MODULES } from '@/lib/bible-data';
 
-const mainNav = [
-  { href: '/', label: 'Dashboard', icon: House },
-  { href: '/tasks', label: 'Tasks', icon: ListChecks },
-  { href: '/data-entry', label: 'Nhập số liệu', icon: ChartBar },
-  { href: '/content-calendar', label: 'Lịch Content', icon: CalendarDots },
-  { href: '/sku', label: 'SKU', icon: Package },
-  { href: '/ai-prompts', label: 'AI Prompts', icon: Robot },
-  { href: '/war-stories', label: 'War Stories', icon: Notebook },
+const navSections = [
+  {
+    label: null,
+    items: [
+      { href: '/', label: 'Tổng quan', icon: '📊' },
+    ],
+  },
+  {
+    label: 'BÁN HÀNG',
+    items: [
+      { href: '/bible/01-RESEARCH', label: 'Research', icon: '🔍' },
+      { href: '/bible/02-SOURCING', label: 'Sourcing', icon: '🏭' },
+      { href: '/bible/03-OFFER', label: 'Offer', icon: '💰' },
+      { href: '/bible/04-CONTENT', label: 'Content', icon: '🎬' },
+      { href: '/bible/05-DISTRIBUTION', label: 'Kênh bán', icon: '📢' },
+      { href: '/bible/06-SALES', label: 'Sales', icon: '💬' },
+    ],
+  },
+  {
+    label: 'QUẢN LÝ',
+    items: [
+      { href: '/bible/07-OPERATION', label: 'Vận hành', icon: '📦' },
+      { href: '/bible/08-DATA', label: 'Dữ liệu', icon: '📈' },
+      { href: '/bible/09-TIMELINE', label: 'Timeline', icon: '📅' },
+      { href: '/bible/10-TEAM', label: 'Team', icon: '👥' },
+    ],
+  },
+  {
+    label: 'CÔNG CỤ',
+    items: [
+      { href: '/tasks', label: 'Task hôm nay', icon: '✅', badge: true },
+      { href: '/data-entry', label: 'Nhập số liệu', icon: '📝' },
+      { href: '/content-calendar', label: 'Lịch Content', icon: '📅' },
+      { href: '/sku', label: 'SKU', icon: '📦' },
+      { href: '/ai-prompts', label: 'AI Prompts', icon: '🤖' },
+      { href: '/war-stories', label: 'War Stories', icon: '📒' },
+    ],
+  },
 ];
 
 export default function Sidebar() {
@@ -22,42 +48,47 @@ export default function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-header">
-        <span>📖</span>
+      <div className="sidebar-brand">
+        <div className="sidebar-brand-icon">📖</div>
         <span>BibleFashion</span>
       </div>
 
-      <nav className="nav-section" style={{ flex: 1, overflowY: 'auto' }}>
-        <div className="nav-label">CHÍNH</div>
-        {mainNav.map(item => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`nav-item ${pathname === item.href ? 'active' : ''}`}
-          >
-            <item.icon size={17} style={{ marginRight: 11, flexShrink: 0 }} />
-            <span>{item.label}</span>
-          </Link>
-        ))}
+      <div className="sidebar-search">
+        <span>🔍</span>
+        <span>Tìm nhanh...</span>
+        <kbd>⌘K</kbd>
+      </div>
 
-        <div className="nav-label" style={{ marginTop: 20 }}>BIBLE</div>
-        {Object.entries(BIBLE_MODULES).map(([key, mod]) => (
-          <Link
-            key={key}
-            href={`/bible/${key}`}
-            className={`nav-item ${pathname === `/bible/${key}` ? 'active' : ''}`}
-          >
-            <span style={{ marginRight: 11, fontSize: 15 }}>{mod.icon}</span>
-            <span>{mod.name}</span>
-          </Link>
+      <nav style={{ flex: 1, overflowY: 'auto' }}>
+        {navSections.map((section, si) => (
+          <div className="nav-group" key={si}>
+            {section.label && (
+              <div className="nav-group-label">{section.label}</div>
+            )}
+            {section.items.map(item => {
+              const isActive = pathname === item.href ||
+                (item.href.startsWith('/bible/') && pathname === item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`nav-item ${isActive ? 'active' : ''}`}
+                >
+                  <span className="nav-item-icon">{item.icon}</span>
+                  <span>{item.label}</span>
+                  {'badge' in item && item.badge && <span className="nav-badge">19</span>}
+                </Link>
+              );
+            })}
+          </div>
         ))}
       </nav>
 
       <div className="sidebar-footer">
-        <Link href="/login" className="nav-item" style={{ color: 'var(--text-muted)' }}>
-          <SignOut size={17} style={{ marginRight: 11 }} />
-          <span>Đăng xuất</span>
-        </Link>
+        <button className="sidebar-collapse-btn">
+          <span>←</span>
+          <span>Thu gọn</span>
+        </button>
       </div>
     </aside>
   );

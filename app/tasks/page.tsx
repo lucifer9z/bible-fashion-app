@@ -18,8 +18,8 @@ export default function TasksPage() {
 
   async function loadTasks() {
     const { data } = await supabase.from('tasks').select('*').eq('date', today).order('time_slot');
-    if (data && data.length > 0) { setTasks(data); }
-    else { await generateDefaultTasks(); }
+    if (data && data.length > 0) setTasks(data);
+    else await generateDefaultTasks();
   }
 
   async function generateDefaultTasks() {
@@ -48,43 +48,54 @@ export default function TasksPage() {
   }
 
   const filtered = filter === 'all' ? tasks : tasks.filter(t => t.role === filter);
-  const groups = { morning: filtered.filter(t => t.time_slot === 'morning'), afternoon: filtered.filter(t => t.time_slot === 'afternoon'), evening: filtered.filter(t => t.time_slot === 'evening') };
   const doneCount = tasks.filter(t => t.done).length;
   const pct = tasks.length ? Math.round(doneCount / tasks.length * 100) : 0;
 
-  const groupMeta: Record<string, { label: string; color: string }> = {
-    morning: { label: '☀️ Sáng (08:00 - 12:00)', color: '#f6e58d' },
-    afternoon: { label: '🌤 Chiều (13:30 - 17:30)', color: '#ffbe76' },
-    evening: { label: '🌙 Tối (19:00 - 22:00)', color: '#786fa6' },
+  const timeLabels: Record<string, string> = { morning: '10:00', afternoon: '14:00', evening: '21:00' };
+  const moduleMap: Record<string, { label: string; cls: string }> = {
+    morning: { label: 'Vận hành', cls: 'pill-operation' },
+    afternoon: { label: 'Content', cls: 'pill-content' },
+    evening: { label: 'Dữ liệu', cls: 'pill-data' },
+  };
+
+  const roleMap: Record<string, { label: string; cls: string; initial: string }> = {
+    leader: { label: 'Leader', cls: 'leader', initial: 'L' },
+    ads: { label: 'Ads', cls: 'ads', initial: 'A' },
+    media: { label: 'Media', cls: 'media', initial: 'M' },
+    san: { label: 'Sàn', cls: 'san', initial: 'S' },
+    fulfillment: { label: 'FF', cls: 'fulfillment', initial: 'F' },
   };
 
   return (
-    <div className="container">
-      <div className="page-header">
-        <h1 className="page-title">📋 Task Manager</h1>
-        <p className="text-secondary">{new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'numeric', year: 'numeric' })}</p>
+    <div>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <div className="page-title">✅ Task hôm nay</div>
+          <div className="page-sub">{new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'numeric', year: 'numeric' })}</div>
+        </div>
       </div>
 
       {/* Progress */}
-      <div className="glass panel" style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-          <span style={{ fontSize: 13 }}>{doneCount}/{tasks.length} hoàn thành ({pct}%)</span>
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{doneCount}/{tasks.length} hoàn thành</span>
+          <span className="font-mono" style={{ color: 'var(--accent)', fontSize: 13 }}>{pct}%</span>
         </div>
-        <div className="progress-wrapper"><div className="progress-fill" style={{ width: `${pct}%` }}></div></div>
+        <div className="progress-bar"><div className="progress-fill" style={{ width: `${pct}%` }}></div></div>
       </div>
 
-      {/* Filter */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
-        <span className={`pill pill-filter ${filter === 'all' ? 'active' : ''}`} onClick={() => setFilter('all')}>Tất cả</span>
+      {/* Filter + Add */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span className={`pill ${filter === 'all' ? 'pill-data' : ''}`} style={{ cursor: 'pointer', padding: '5px 12px' }} onClick={() => setFilter('all')}>Tất cả</span>
         {Object.entries(ROLES).map(([key, role]) => (
-          <span key={key} className={`pill pill-filter ${filter === key ? 'active' : ''}`} onClick={() => setFilter(key)}>
+          <span key={key} className={`pill ${filter === key ? 'pill-data' : ''}`} style={{ cursor: 'pointer', padding: '5px 12px' }} onClick={() => setFilter(key)}>
             {role.icon} {role.name}
           </span>
         ))}
       </div>
 
       {/* Add Task */}
-      <div className="glass panel" style={{ marginBottom: 20 }}>
+      <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <input className="form-control" style={{ flex: 1, minWidth: 200 }} placeholder="Thêm task mới..." value={newText} onChange={e => setNewText(e.target.value)} onKeyDown={e => e.key === 'Enter' && addTask()} />
           <select className="form-control" style={{ width: 'auto' }} value={newRole} onChange={e => setNewRole(e.target.value)}>
@@ -97,24 +108,46 @@ export default function TasksPage() {
         </div>
       </div>
 
-      {/* Task Groups */}
-      {Object.entries(groups).map(([time, items]) => items.length > 0 && (
-        <div className="task-group" key={time}>
-          <div className="task-group-header glass" style={{ color: groupMeta[time].color }}>{groupMeta[time].label}</div>
-          <div className="glass task-group-body" style={{ borderTop: 'none', borderRadius: '0 0 var(--radius-lg) var(--radius-lg)' }}>
-            {items.map(t => (
-              <div className={`task-item ${t.done ? 'done' : ''}`} key={t.id}>
-                <div className={`custom-checkbox ${t.done ? 'checked' : ''}`} onClick={() => toggleTask(t.id, t.done)}></div>
-                <div className="task-text">{t.text}</div>
-                <span className="pill" style={{ background: `${ROLES[t.role]?.color}20`, color: ROLES[t.role]?.color, border: `1px solid ${ROLES[t.role]?.color}30`, fontSize: 11 }}>
-                  {ROLES[t.role]?.name || t.role}
-                </span>
-                <span className="task-delete" onClick={() => deleteTask(t.id)} style={{ cursor: 'pointer', opacity: 0.4, fontSize: 14 }}>✕</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
+      {/* Task Table */}
+      <div className="card">
+        <table className="task-table">
+          <thead>
+            <tr>
+              <th style={{ width: 30 }}></th>
+              <th>Công việc</th>
+              <th>Module</th>
+              <th>Owner</th>
+              <th>Thời gian</th>
+              <th style={{ width: 30 }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map(t => {
+              const mod = moduleMap[t.time_slot] || { label: t.time_slot, cls: 'pill-data' };
+              const role = roleMap[t.role] || { label: t.role, cls: 'leader', initial: '?' };
+              return (
+                <tr key={t.id}>
+                  <td>
+                    <div className={`task-check ${t.done ? 'checked' : ''}`} onClick={() => toggleTask(t.id, t.done)}>
+                      {t.done && '✓'}
+                    </div>
+                  </td>
+                  <td className={t.done ? 'task-text done' : ''}>{t.text}</td>
+                  <td><span className={`pill ${mod.cls}`}>{mod.label}</span></td>
+                  <td>
+                    <div className="owner-avatar">
+                      <div className={`owner-avatar-circle ${role.cls}`}>{role.initial}</div>
+                      <span style={{ fontSize: 12 }}>{role.label}</span>
+                    </div>
+                  </td>
+                  <td className="font-mono" style={{ fontSize: 12, color: 'var(--text-muted)' }}>{timeLabels[t.time_slot] || '—'}</td>
+                  <td><span style={{ cursor: 'pointer', color: 'var(--text-muted)', fontSize: 12 }} onClick={() => deleteTask(t.id)}>✕</span></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

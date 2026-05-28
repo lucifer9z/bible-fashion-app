@@ -68,7 +68,7 @@ export default function SkuPage() {
       </div>
 
       {/* Margin formula */}
-      <div className="glass panel" style={{ marginBottom: 20, fontSize: 12, color: 'var(--text-muted)' }}>
+      <div className="card panel" style={{ marginBottom: 20, fontSize: 12, color: 'var(--text-muted)' }}>
         <strong style={{ color: 'var(--text-secondary)' }}>Công thức biên:</strong><br />
         FB: Giá bán - Nhập - CPA(25K) - Ship(20K) - Bao bì(5K)<br />
         Shopee: Giá bán - Nhập - (Giá×39.5% + 4.6K) - Bao bì(5K)<br />
@@ -81,7 +81,7 @@ export default function SkuPage() {
       </div>
 
       {showForm && (
-        <div className="glass panel" style={{ marginBottom: 20 }}>
+        <div className="card panel" style={{ marginBottom: 20 }}>
           <div className="form-grid">
             <div className="input-group"><label>Tên sản phẩm</label><input className="form-control" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Jean suông đen" /></div>
             <div className="input-group"><label>Mã SKU</label><input className="form-control" value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} placeholder="JS-DEN-01" /></div>
@@ -102,7 +102,7 @@ export default function SkuPage() {
 
       {/* SKU Table */}
       {skus.length === 0 ? (
-        <div className="glass panel" style={{ textAlign: 'center', padding: 40 }}>
+        <div className="card panel" style={{ textAlign: 'center', padding: 40 }}>
           <p className="text-muted">Chưa có SKU nào. Thêm sản phẩm đầu tiên!</p>
         </div>
       ) : (

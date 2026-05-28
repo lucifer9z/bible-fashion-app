@@ -107,7 +107,7 @@ export default function DataEntryPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
         <div>
           {sections.map(section => (
-            <div key={section.title} className="glass panel" style={{ marginBottom: 16 }}>
+            <div key={section.title} className="card panel" style={{ marginBottom: 16 }}>
               <div className="panel-title">{section.title}</div>
               <div className="form-grid">
                 {section.fields.map(f => (
@@ -124,7 +124,7 @@ export default function DataEntryPage() {
           </button>
         </div>
 
-        <div className="glass panel" style={{ position: 'sticky', top: 20, alignSelf: 'start' }}>
+        <div className="card panel" style={{ position: 'sticky', top: 20, alignSelf: 'start' }}>
           <div className="panel-title">⚡ Auto-calc KPI</div>
           {calcRows.map(r => (
             <div className="auto-calc-row" key={r.label}>

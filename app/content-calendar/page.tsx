@@ -97,7 +97,7 @@ export default function ContentCalendarPage() {
           const dayItems = items.filter(it => it.date === date && (platformFilter === 'all' || it.platform === platformFilter));
           const isToday = date === today;
           return (
-            <div key={date} className="glass" style={{ padding: 12, minHeight: 200, borderColor: isToday ? 'var(--accent)' : undefined, boxShadow: isToday ? 'var(--shadow-glow)' : undefined }}>
+            <div key={date} className="card" style={{ padding: 12, minHeight: 200, borderColor: isToday ? 'var(--accent)' : undefined, boxShadow: isToday ? 'var(--shadow-glow)' : undefined }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: isToday ? 'var(--accent)' : 'var(--text-muted)' }}>{dayNames[i]}</span>
                 <span className="font-mono" style={{ fontSize: 11, color: isToday ? 'var(--accent)' : 'var(--text-muted)' }}>{date.slice(5)}</span>
