@@ -6,21 +6,13 @@ import { useStore } from '@/lib/store-context';
 import Link from 'next/link';
 import { exportToPng } from '@/lib/export';
 import { requestNotificationPermission } from '@/lib/notifications';
-
-interface DailyData {
-  date: string;
-  fb_spend: number; fb_inbox: number; fb_orders: number; fb_revenue: number;
-  sp_organic: number; sp_paid: number; sp_revenue: number; sp_spend: number;
-  tt_views: number; tt_orders: number; tt_revenue: number;
-  fl_shipped: number; fl_delivered: number; fl_boom: number; fl_return: number;
-}
-
-interface Task { id: string; text: string; role: string; time_slot: string; done: boolean; }
+import { DailyData, TaskItem } from '@/lib/types';
+import { KPICard, FunnelCard, WarningsCard, AdsCard, TasksCard, RemindersCard, WeeklyReviewCard, DashboardSkeleton } from '@/components/dashboard';
 
 export default function Dashboard() {
   const [data, setData] = useState<DailyData[]>([]);
   const [yesterday, setYesterday] = useState<DailyData | null>(null);
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [skuWarnings, setSkuWarnings] = useState<string[]>([]);
   const [contentCount, setContentCount] = useState(0);
   const supabase = createClient();
@@ -212,27 +204,21 @@ export default function Dashboard() {
   }
 
 
-  if (loading) {
-    return (
-      <div style={{ padding: 20 }}>
-        <div className="page-header"><div className="page-greeting">Đang tải... ⏳</div></div>
-        <div className="kpi-grid">
-          {[1,2,3,4].map(i => (
-            <div className="kpi-card" key={i} style={{ opacity: 0.4 }}>
-              <div className="kpi-label" style={{ background: 'var(--bg-card-border)', height: 14, width: '60%', borderRadius: 4 }}></div>
-              <div className="kpi-value" style={{ background: 'var(--bg-card-border)', height: 28, width: '40%', borderRadius: 4, marginTop: 8 }}></div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <DashboardSkeleton />;
+
+  const funnelRows = [
+    { label: 'Impression', value: funnelImpressions, pct: 100, color: 'purple' },
+    { label: 'Click', value: funnelClicks, pct: funnelImpressions > 0 ? (funnelClicks / funnelImpressions * 100) : 0, color: 'blue' },
+    { label: 'Inbox', value: funnelInbox, pct: funnelClicks > 0 ? (funnelInbox / funnelClicks * 100) : 0, color: 'orange' },
+    { label: 'Đơn', value: funnelOrders, pct: funnelInbox > 0 ? (funnelOrders / funnelInbox * 100) : 0, color: 'pink' },
+    { label: 'Hoàn tất', value: funnelDelivered, pct: funnelOrders > 0 ? (funnelDelivered / funnelOrders * 100) : 0, color: 'green' },
+  ];
 
   return (
     <div id="dashboard-export">
       {/* Error banner */}
       {error && (
-        <div style={{ background: 'var(--red-bg, rgba(239,68,68,0.15))', border: '1px solid var(--red)', borderRadius: 'var(--radius-md)', padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid var(--red)', borderRadius: 'var(--radius-md)', padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
           <span>⚠️</span>
           <span style={{ color: 'var(--red)', fontSize: 13 }}>{error}</span>
           <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={loadAll}>Thử lại</button>
@@ -266,219 +252,42 @@ export default function Dashboard() {
 
       {/* KPI Cards */}
       <div className="kpi-grid">
-        <div className="kpi-card">
-          <div className="kpi-header">
-            <div className="kpi-icon purple">📦</div>
-            {totalOrders > 0 && <div className={`kpi-check ${kpiCheck(totalOrders, targetOrders, false)}`}>{kpiCheck(totalOrders, targetOrders, false) === 'ok' ? '✓' : '!'}</div>}
-          </div>
-          <div className="kpi-label">Tổng đơn hôm nay</div>
-          <div className="kpi-value">{totalOrders || '—'}</div>
-          <div className={`kpi-trend ${ordersDiff >= 0 ? 'up' : 'down'}`}>
-            {ordersDiff !== 0 ? `${ordersDiff > 0 ? '↑' : '↓'}${Math.abs(ordersDiff)} so với hôm qua` : ''}
-          </div>
-          <div className="kpi-target">Mục tiêu: {targetOrders} đơn</div>
-        </div>
-
-        <div className="kpi-card">
-          <div className="kpi-header">
-            <div className="kpi-icon green">💰</div>
-            {totalRevenue > 0 && <div className={`kpi-check ${kpiCheck(totalRevenue, targetRevenue, false)}`}>{kpiCheck(totalRevenue, targetRevenue, false) === 'ok' ? '✓' : '!'}</div>}
-          </div>
-          <div className="kpi-label">Doanh thu</div>
-          <div className="kpi-value">{totalRevenue > 0 ? `${(totalRevenue / 1000).toFixed(1)}M` : '—'}</div>
-          <div className={`kpi-trend ${revenuePct >= 0 ? 'up' : 'down'}`}>
-            {revenuePct !== 0 ? `${revenuePct > 0 ? '↑' : '↓'}${Math.abs(revenuePct)}%` : ''}
-          </div>
-          <div className="kpi-target">Mục tiêu: {(targetRevenue / 1000).toFixed(0)}M</div>
-        </div>
-
-        <div className="kpi-card">
-          <div className="kpi-header">
-            <div className="kpi-icon blue">📊</div>
-            {cpa > 0 && <div className={`kpi-check ${kpiCheck(cpa, targetCpa, true)}`}>{kpiCheck(cpa, targetCpa, true) === 'ok' ? '✓' : '!'}</div>}
-          </div>
-          <div className="kpi-label">CPA</div>
-          <div className="kpi-value">{cpa > 0 ? `${cpa}K` : '—'}</div>
-          <div className={`kpi-trend ${cpa > 0 && cpa <= targetCpa ? 'up' : cpa > 0 ? 'down' : 'neutral'}`}>
-            {cpa > 0 && cpa <= targetCpa ? '✅ Đạt mục tiêu' : cpa > 0 ? '⚠️ Chưa đạt' : ''}
-          </div>
-          <div className="kpi-target">Mục tiêu &lt; {targetCpa}K</div>
-        </div>
-
-        <div className="kpi-card">
-          <div className="kpi-header">
-            <div className="kpi-icon orange">📈</div>
-            {roas > 0 && <div className={`kpi-check ${kpiCheck(roas, targetRoas, false)}`}>{kpiCheck(roas, targetRoas, false) === 'ok' ? '✓' : '!'}</div>}
-          </div>
-          <div className="kpi-label">ROAS</div>
-          <div className="kpi-value">{roas > 0 ? `${roas}` : '—'}</div>
-          <div className={`kpi-trend ${roas >= targetRoas ? 'up' : roas > 0 ? 'down' : 'neutral'}`}>
-            {roas > 0 ? `${roas >= targetRoas ? '↑' : '↓'}+${(roas - targetRoas).toFixed(1)}` : ''}
-          </div>
-          <div className="kpi-target">Mục tiêu &gt; {targetRoas}</div>
-        </div>
+        <KPICard icon="📦" iconColor="purple" label="Tổng đơn hôm nay" value={totalOrders ? `${totalOrders}` : '—'}
+          trend={ordersDiff !== 0 ? `${ordersDiff > 0 ? '↑' : '↓'}${Math.abs(ordersDiff)} so với hôm qua` : undefined}
+          trendDir={ordersDiff >= 0 ? 'up' : 'down'} target={`Mục tiêu: ${targetOrders} đơn`}
+          checkStatus={totalOrders > 0 ? kpiCheck(totalOrders, targetOrders, false) || undefined : undefined} />
+        <KPICard icon="💰" iconColor="green" label="Doanh thu" value={totalRevenue > 0 ? `${(totalRevenue / 1000).toFixed(1)}M` : '—'}
+          trend={revenuePct !== 0 ? `${revenuePct > 0 ? '↑' : '↓'}${Math.abs(revenuePct)}%` : undefined}
+          trendDir={revenuePct >= 0 ? 'up' : 'down'} target={`Mục tiêu: ${(targetRevenue / 1000).toFixed(0)}M`}
+          checkStatus={totalRevenue > 0 ? kpiCheck(totalRevenue, targetRevenue, false) || undefined : undefined} />
+        <KPICard icon="📊" iconColor="blue" label="CPA" value={cpa > 0 ? `${cpa}K` : '—'}
+          trend={cpa > 0 ? (cpa <= targetCpa ? '✅ Đạt mục tiêu' : '⚠️ Chưa đạt') : undefined}
+          trendDir={cpa > 0 && cpa <= targetCpa ? 'up' : cpa > 0 ? 'down' : 'neutral'} target={`Mục tiêu < ${targetCpa}K`}
+          checkStatus={cpa > 0 ? kpiCheck(cpa, targetCpa, true) || undefined : undefined} />
+        <KPICard icon="📈" iconColor="orange" label="ROAS" value={roas > 0 ? `${roas}` : '—'}
+          trend={roas > 0 ? `${roas >= targetRoas ? '↑' : '↓'}+${(roas - targetRoas).toFixed(1)}` : undefined}
+          trendDir={roas >= targetRoas ? 'up' : roas > 0 ? 'down' : 'neutral'} target={`Mục tiêu > ${targetRoas}`}
+          checkStatus={roas > 0 ? kpiCheck(roas, targetRoas, false) || undefined : undefined} />
       </div>
 
       {/* Row: Tasks + Funnel */}
       <div className="dashboard-grid-3-1">
-        {/* Tasks */}
-        <div className="card">
-          <div className="card-title">
-            <span>🗓 Hôm nay cần làm gì?</span>
-            <Link href="/tasks" className="card-title-link">Xem tất cả →</Link>
-          </div>
-          <table className="task-table">
-            <thead>
-              <tr>
-                <th style={{ width: 30 }}></th>
-                <th>Công việc</th>
-                <th>Module</th>
-                <th>Owner</th>
-                <th>Thời gian</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tasks.length === 0 && (
-                <tr><td colSpan={5} style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)' }}>Chưa có task. <Link href="/tasks" style={{ color: 'var(--accent)' }}>Tạo task →</Link></td></tr>
-              )}
-              {tasks.map(t => {
-                const mod = moduleMap[t.time_slot] || { label: t.time_slot, cls: 'pill-data' };
-                const role = roleMap[t.role] || { label: t.role, cls: 'leader' };
-                const timeMap: Record<string, string> = { morning: '10:00', afternoon: '14:00', evening: '21:00' };
-                return (
-                  <tr key={t.id}>
-                    <td>
-                      <div className={`task-check ${t.done ? 'checked' : ''}`} onClick={() => toggleTask(t.id, t.done)}>
-                        {t.done && '✓'}
-                      </div>
-                    </td>
-                    <td className={t.done ? 'task-text done' : ''}>{t.text}</td>
-                    <td><span className={`pill ${mod.cls}`}>{mod.label}</span></td>
-                    <td>
-                      <div className="owner-avatar">
-                        <div className={`owner-avatar-circle ${role.cls}`}>{role.label[0]}</div>
-                        <span style={{ fontSize: 12 }}>{role.label}</span>
-                      </div>
-                    </td>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-muted)' }}>{timeMap[t.time_slot] || '—'}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Funnel */}
-        <div className="card">
-          <div className="card-title">📊 Phễu bán hàng</div>
-          {!hasData ? (
-            <div className="text-muted" style={{ textAlign: 'center', padding: 30 }}>Nhập số liệu để xem phễu</div>
-          ) : (
-            <>
-              {[
-                { label: 'Impression', value: funnelImpressions, pct: 100, color: 'purple' },
-                { label: 'Click', value: funnelClicks, pct: funnelImpressions > 0 ? (funnelClicks / funnelImpressions * 100) : 0, color: 'blue' },
-                { label: 'Inbox', value: funnelInbox, pct: funnelClicks > 0 ? (funnelInbox / funnelClicks * 100) : 0, color: 'orange' },
-                { label: 'Đơn', value: funnelOrders, pct: funnelInbox > 0 ? (funnelOrders / funnelInbox * 100) : 0, color: 'pink' },
-                { label: 'Hoàn tất', value: funnelDelivered, pct: funnelOrders > 0 ? (funnelDelivered / funnelOrders * 100) : 0, color: 'green' },
-              ].map((row, i) => (
-                <div className="funnel-row" key={i}>
-                  <span className="funnel-label">{row.label}</span>
-                  <span className="funnel-value">{row.value > 999 ? `${(row.value / 1000).toFixed(1)}K` : row.value}</span>
-                  <div className="funnel-bar-wrap">
-                    <div className={`funnel-bar ${row.color}`} style={{ width: `${Math.max(3, i === 0 ? 100 : Math.min(100, row.value / maxFunnel * 100))}%` }}></div>
-                  </div>
-                  <span className="funnel-pct">{row.pct.toFixed(row.pct < 1 ? 2 : row.pct >= 100 ? 0 : 2)}%</span>
-                </div>
-              ))}
-              <div className="funnel-note">
-                ✅ Tỷ lệ chốt {closeRate}% {parseFloat(closeRate) >= 15 ? '— đang ổn định.' : '— cần cải thiện.'}
-              </div>
-            </>
-          )}
-        </div>
+        <TasksCard tasks={tasks} onToggle={toggleTask} moduleMap={moduleMap} roleMap={roleMap} />
+        <FunnelCard hasData={hasData} rows={funnelRows} maxFunnel={maxFunnel} closeRate={closeRate} />
       </div>
 
-      {/* Row: Warnings + Ads Recommendations */}
+      {/* Row: Warnings + Ads */}
       <div className="dashboard-grid-2">
-        {/* Warnings + Diagnostics */}
-        <div className="card">
-          <div className="card-title">⚠️ Cảnh báo vận hành</div>
-          {warnings.length === 0 && diagnostics.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 20, color: 'var(--green)', fontSize: 13 }}>✅ Không có cảnh báo — mọi thứ ổn!</div>
-          ) : (
-            <>
-              {warnings.map((w, i) => (
-                <div className="warning-item" key={`w-${i}`}>
-                  <div className={`warning-icon ${w.type}`}>{w.icon}</div>
-                  <div className="warning-text">{w.text}</div>
-                  <div className="warning-arrow">›</div>
-                </div>
-              ))}
-              {diagnostics.length > 0 && (
-                <div style={{ borderTop: '1px solid var(--bg-card-border)', marginTop: 8, paddingTop: 8 }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>🔍 Chẩn đoán nghẽn</div>
-                  {diagnostics.map((d, i) => (
-                    <div className="warning-item" key={`d-${i}`}>
-                      <div className={`warning-icon ${d.type}`}>{d.icon}</div>
-                      <div className="warning-text">
-                        <div>{d.text}</div>
-                        <div style={{ color: d.type === 'red' ? 'var(--red)' : 'var(--yellow)', fontWeight: 600, fontSize: 12, marginTop: 2 }}>{d.action}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Ads Recommendations */}
-        <div className="card">
-          <div className="card-title">📢 Gợi ý Ads</div>
-          {adsRecs.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>Nhập số liệu FB Ads để nhận gợi ý</div>
-          ) : (
-            adsRecs.map((r, i) => (
-              <div className="warning-item" key={`a-${i}`}>
-                <div className={`warning-icon ${r.type}`} style={r.type === 'green' ? { background: 'var(--green-bg)' } : r.type === 'blue' ? { background: 'var(--blue-bg)' } : undefined}>{r.icon}</div>
-                <div className="warning-text" style={{ color: r.type === 'green' ? 'var(--green)' : r.type === 'red' ? 'var(--red)' : undefined, fontWeight: 600 }}>{r.text}</div>
-              </div>
-            ))
-          )}
-        </div>
+        <WarningsCard warnings={warnings} diagnostics={diagnostics} />
+        <AdsCard adsRecs={adsRecs} />
       </div>
 
-      {/* Row: Reminders + Weekly Review */}
+      {/* Row: Reminders + Weekly */}
       <div className="dashboard-grid-2">
-        {/* Reminders */}
-        <div className="card">
-          <div className="card-title">🔔 Nhắc việc</div>
-          {reminders.map((r, i) => (
-            <div className="reminder-item" key={i}>
-              <span className="reminder-time">{r.time}</span>
-              <span className={`reminder-dot ${r.status}`}></span>
-              <span className="reminder-text">{r.text}</span>
-              <span className="warning-arrow">›</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Weekly Review Link */}
-        <div className="card">
-          <div className="card-title">📋 Review tuần</div>
-          <Link href="/weekly-review" style={{ textDecoration: 'none' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: 'var(--accent-soft)', borderRadius: 'var(--radius-md)', cursor: 'pointer', transition: 'all 0.2s' }}>
-              <div style={{ fontSize: 28 }}>📊</div>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2, color: 'var(--text-primary)' }}>Xem báo cáo tuần</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Tổng hợp 7 ngày: đơn, doanh thu, CPA, ROAS, P&L</div>
-              </div>
-              <div style={{ marginLeft: 'auto', color: 'var(--accent)', fontSize: 18 }}>→</div>
-            </div>
-          </Link>
-        </div>
+        <RemindersCard reminders={reminders} />
+        <WeeklyReviewCard />
       </div>
     </div>
   );
 }
+
