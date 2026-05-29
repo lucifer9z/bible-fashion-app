@@ -34,11 +34,15 @@ export default function DataEntryPage() {
     }
   }
 
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   async function saveData() {
+    setSaveError(null);
     const payload: any = { date, ...form };
     if (activeStoreId) payload.store_id = activeStoreId;
-    const { error } = await supabase.from('daily_data').upsert(payload, { onConflict: 'date' });
+    const { error } = await supabase.from('daily_data').upsert(payload, { onConflict: 'date,store_id' });
     if (!error) { setSaved(true); setTimeout(() => setSaved(false), 2000); }
+    else { setSaveError(error.message); }
   }
 
   function update(key: string, val: string) {
@@ -128,6 +132,7 @@ export default function DataEntryPage() {
           <button className="btn btn-primary" style={{ width: '100%' }} onClick={saveData}>
             {saved ? '✅ Đã lưu!' : '💾 Lưu số liệu'}
           </button>
+          {saveError && <div style={{ marginTop: 8, color: 'var(--red)', fontSize: 12 }}>⚠️ Lỗi: {saveError}</div>}
         </div>
 
         <div className="card panel" style={{ position: 'sticky', top: 20, alignSelf: 'start' }}>
