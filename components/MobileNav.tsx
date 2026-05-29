@@ -7,7 +7,7 @@ const navItems = [
   { href: '/', label: 'Tổng quan', icon: '📊' },
   { href: '/tasks', label: 'Tasks', icon: '✅', badge: true },
   { href: '/data-entry', label: 'Nhập liệu', icon: '📝' },
-  { href: '/research', label: 'Research', icon: '🔍' },
+  { href: '/research', label: 'Radar', icon: '📡' },
   { href: '/more', label: 'Thêm', icon: '☰' },
 ];
 

@@ -1,604 +1,513 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase';
-import { useStore } from '@/lib/store-context';
 
-type Tab = 'overview' | 'competitors' | 'reviews' | 'ads' | 'trends';
+const supabase = createClient();
 
-interface Competitor { id: string; name: string; platform: string; url: string; notes: string; created_at: string; }
-interface CompProduct { id: string; competitor_id: string; name: string; price: number; original_price: number; sold_count: number; rating: number; review_count: number; offer: string; product_url: string; scraped_at: string; }
-interface CompReview { id: string; competitor_id: string; stars: number; content: string; category: string; product_name: string; scraped_at: string; }
-interface CompAd { id: string; competitor_id: string; platform: string; ad_text: string; format: string; offer: string; hook: string; url: string; first_seen: string; last_seen: string; is_active: boolean; notes: string; }
-interface TrendVideo { id: string; platform: string; title: string; views: number; likes: number; hook: string; video_type: string; audio: string; url: string; creator: string; scraped_at: string; }
+// ============ TYPES ============
+type RadarEntry = {
+  id: string; category: string; note: string; url?: string;
+  image_url?: string; created_by?: string; created_at: string;
+};
+type PriceEntry = {
+  id: string; my_product: string; my_sku?: string; my_price: number;
+  competitor_min: number; competitor_max: number; competitor_names?: string;
+  status: string; notes?: string; updated_at: string;
+};
 
-const TABS: { key: Tab; label: string; icon: string }[] = [
-  { key: 'overview', label: 'Tổng quan', icon: '📊' },
-  { key: 'competitors', label: 'Đối thủ', icon: '🏪' },
-  { key: 'reviews', label: 'Reviews', icon: '⭐' },
-  { key: 'ads', label: 'Ads Library', icon: '📢' },
-  { key: 'trends', label: 'Trends', icon: '🔥' },
+const CATEGORIES = [
+  { value: 'price', label: '💰 Giá đối thủ', color: '#fb923c' },
+  { value: 'content', label: '🎬 Content hay', color: '#f472b6' },
+  { value: 'offer', label: '🎁 Offer mới', color: '#34d399' },
+  { value: 'trend', label: '🔥 Trend SP', color: '#60a5fa' },
+  { value: 'review', label: '⭐ Review khách', color: '#fbbf24' },
+  { value: 'other', label: '📝 Khác', color: '#9ca3b8' },
 ];
 
-const PLATFORMS = ['shopee', 'tiktok', 'facebook', 'lazada'];
-const VIDEO_TYPES = ['unbox', 'try-on', 'compare', 'tutorial', 'review', 'outfit', 'other'];
-const AD_FORMATS = ['video', 'image', 'carousel', 'reel'];
-const REVIEW_CATEGORIES = ['size', 'quality', 'shipping', 'color', 'packaging', 'price', 'service', 'other'];
+const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
+  ok: { label: '🟢 OK', color: '#34d399', bg: 'rgba(52,211,153,0.1)' },
+  expensive: { label: '🔴 ĐẮT', color: '#f87171', bg: 'rgba(248,113,113,0.1)' },
+  cheap: { label: '🔵 RẺ', color: '#60a5fa', bg: 'rgba(96,165,250,0.1)' },
+};
 
 export default function ResearchPage() {
-  const [tab, setTab] = useState<Tab>('overview');
-  const [competitors, setCompetitors] = useState<Competitor[]>([]);
-  const [products, setProducts] = useState<CompProduct[]>([]);
-  const [reviews, setReviews] = useState<CompReview[]>([]);
-  const [ads, setAds] = useState<CompAd[]>([]);
-  const [trends, setTrends] = useState<TrendVideo[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<'radar' | 'price' | 'actions'>('radar');
+  const [storeId, setStoreId] = useState<string | null>(null);
 
-  const supabase = createClient();
-  const { activeStoreId, storeFilter } = useStore();
+  // Radar state
+  const [radarEntries, setRadarEntries] = useState<RadarEntry[]>([]);
+  const [radarForm, setRadarForm] = useState({ category: 'price', note: '', url: '', created_by: '' });
+  const [showRadarForm, setShowRadarForm] = useState(false);
+  const [radarFilter, setRadarFilter] = useState('all');
 
-  useEffect(() => { loadAll(); }, [activeStoreId]);
+  // Price state
+  const [priceEntries, setPriceEntries] = useState<PriceEntry[]>([]);
+  const [priceForm, setPriceForm] = useState({ my_product: '', my_price: '', competitor_min: '', competitor_max: '', competitor_names: '', notes: '' });
+  const [showPriceForm, setShowPriceForm] = useState(false);
+  const [editPriceId, setEditPriceId] = useState<string | null>(null);
 
-  async function loadAll() {
-    setLoading(true);
-    try {
-      const [cRes, pRes, rRes, aRes, tRes] = await Promise.all([
-        storeFilter(supabase.from('competitors').select('*')).order('created_at', { ascending: false }),
-        storeFilter(supabase.from('competitor_products').select('*')).order('scraped_at', { ascending: false }),
-        storeFilter(supabase.from('competitor_reviews').select('*')).order('scraped_at', { ascending: false }),
-        storeFilter(supabase.from('competitor_ads').select('*')).order('scraped_at', { ascending: false }),
-        storeFilter(supabase.from('trend_videos').select('*')).order('views', { ascending: false }),
-      ]);
-      if (cRes.data) setCompetitors(cRes.data);
-      if (pRes.data) setProducts(pRes.data);
-      if (rRes.data) setReviews(rRes.data);
-      if (aRes.data) setAds(aRes.data);
-      if (tRes.data) setTrends(tRes.data);
-    } catch (e) { console.error(e); }
-    setLoading(false);
+  // Actions state
+  const [actionPrompt, setActionPrompt] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  // ============ LOAD DATA ============
+  const loadData = useCallback(async () => {
+    const { data: stores } = await supabase.from('stores').select('id').limit(1);
+    const sid = stores?.[0]?.id || null;
+    setStoreId(sid);
+    if (!sid) return;
+
+    const [radarRes, priceRes] = await Promise.all([
+      supabase.from('market_radar').select('*').eq('store_id', sid).order('created_at', { ascending: false }).limit(50),
+      supabase.from('price_compare').select('*').eq('store_id', sid).order('my_product'),
+    ]);
+    setRadarEntries(radarRes.data || []);
+    setPriceEntries(priceRes.data || []);
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  // ============ RADAR ACTIONS ============
+  async function addRadar() {
+    if (!radarForm.note.trim() || !storeId) return;
+    await supabase.from('market_radar').insert({
+      store_id: storeId,
+      category: radarForm.category,
+      note: radarForm.note.trim(),
+      url: radarForm.url.trim() || null,
+      created_by: radarForm.created_by.trim() || null,
+    });
+    setRadarForm({ category: 'price', note: '', url: '', created_by: '' });
+    setShowRadarForm(false);
+    loadData();
   }
 
-  // ========== OVERVIEW TAB ==========
-  function OverviewTab() {
-    const avgPrice = products.length > 0 ? Math.round(products.reduce((s, p) => s + (p.price || 0), 0) / products.length) : 0;
-    const minPrice = products.length > 0 ? Math.min(...products.map(p => p.price || 999999)) : 0;
-    const maxPrice = products.length > 0 ? Math.max(...products.map(p => p.price || 0)) : 0;
-    const activeAds = ads.filter(a => a.is_active).length;
-
-    // Review category breakdown
-    const catCounts: Record<string, number> = {};
-    reviews.forEach(r => { const c = r.category || 'other'; catCounts[c] = (catCounts[c] || 0) + 1; });
-    const topCategories = Object.entries(catCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
-
-    return (
-      <>
-        <div className="kpi-grid">
-          <div className="kpi-card"><div className="kpi-icon purple">🏪</div><div className="kpi-label">Đối thủ tracking</div><div className="kpi-value">{competitors.length}/20</div></div>
-          <div className="kpi-card"><div className="kpi-icon blue">📦</div><div className="kpi-label">Sản phẩm</div><div className="kpi-value">{products.length}</div></div>
-          <div className="kpi-card"><div className="kpi-icon orange">⭐</div><div className="kpi-label">Reviews</div><div className="kpi-value">{reviews.length}</div></div>
-          <div className="kpi-card"><div className="kpi-icon green">📢</div><div className="kpi-label">Ads active</div><div className="kpi-value">{activeAds}</div></div>
-        </div>
-
-        {products.length > 0 && (
-          <div className="card" style={{ marginTop: 16 }}>
-            <div className="card-title">💰 Range giá thị trường</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '12px 0' }}>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Min</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--green)' }}>{(minPrice/1000).toFixed(0)}K</div>
-              </div>
-              <div style={{ flex: 1, height: 8, background: 'var(--bg-card-border)', borderRadius: 4, position: 'relative' }}>
-                <div style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderRadius: 4, background: 'linear-gradient(90deg, var(--green), var(--accent), var(--red))' }}></div>
-                {avgPrice > 0 && <div style={{ position: 'absolute', top: -6, left: `${Math.min(95, Math.max(5, ((avgPrice - minPrice) / (maxPrice - minPrice || 1)) * 100))}%`, width: 20, height: 20, borderRadius: '50%', background: 'var(--accent)', border: '2px solid #fff', transform: 'translateX(-50%)' }} title={`Avg: ${(avgPrice/1000).toFixed(0)}K`}></div>}
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Max</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--red)' }}>{(maxPrice/1000).toFixed(0)}K</div>
-              </div>
-            </div>
-            <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>Trung bình: <strong style={{ color: 'var(--accent)' }}>{(avgPrice/1000).toFixed(0)}K</strong></div>
-          </div>
-        )}
-
-        {topCategories.length > 0 && (
-          <div className="card" style={{ marginTop: 16 }}>
-            <div className="card-title">⚠️ Top vấn đề từ reviews đối thủ</div>
-            {topCategories.map(([cat, count]) => (
-              <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                <span style={{ width: 80, fontSize: 12, fontWeight: 600, textTransform: 'capitalize' }}>{cat}</span>
-                <div style={{ flex: 1, height: 6, background: 'var(--bg-card-border)', borderRadius: 3 }}>
-                  <div style={{ height: '100%', borderRadius: 3, background: 'var(--accent)', width: `${(count / (topCategories[0]?.[1] || 1)) * 100}%` }}></div>
-                </div>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)', minWidth: 30 }}>{count}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {competitors.length === 0 && (
-          <div className="card" style={{ marginTop: 16, textAlign: 'center', padding: 40 }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>🔍</div>
-            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>Chưa có dữ liệu Research</div>
-            <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>Bắt đầu bằng cách thêm đối thủ ở tab "Đối thủ"</div>
-            <button className="btn btn-primary" onClick={() => setTab('competitors')}>🏪 Thêm đối thủ đầu tiên</button>
-          </div>
-        )}
-      </>
-    );
+  async function deleteRadar(id: string) {
+    if (!confirm('Xóa ghi chú này?')) return;
+    await supabase.from('market_radar').delete().eq('id', id);
+    loadData();
   }
 
-  // ========== COMPETITORS TAB ==========
-  function CompetitorsTab() {
-    const [showForm, setShowForm] = useState(false);
-    const [form, setForm] = useState({ name: '', platform: 'shopee', url: '', notes: '' });
-    const [editId, setEditId] = useState<string | null>(null);
-    const [showProductForm, setShowProductForm] = useState<string | null>(null);
-    const [pForm, setPForm] = useState({ name: '', price: '', original_price: '', sold_count: '', rating: '', review_count: '', offer: '', product_url: '' });
+  // ============ PRICE ACTIONS ============
+  async function addOrUpdatePrice() {
+    if (!priceForm.my_product.trim() || !storeId) return;
+    const myPrice = parseInt(priceForm.my_price) || 0;
+    const compMin = parseInt(priceForm.competitor_min) || 0;
+    const compMax = parseInt(priceForm.competitor_max) || 0;
 
-    async function saveCompetitor() {
-      if (!form.name.trim()) return;
-      const payload: any = { ...form, store_id: activeStoreId };
-      if (editId) {
-        await supabase.from('competitors').update(payload).eq('id', editId);
-      } else {
-        if (competitors.length >= 20) { alert('Tối đa 20 đối thủ!'); return; }
-        await supabase.from('competitors').insert(payload);
-      }
-      setForm({ name: '', platform: 'shopee', url: '', notes: '' });
-      setShowForm(false); setEditId(null);
-      loadAll();
+    // Auto status
+    let status = 'ok';
+    if (compMax > 0 && myPrice > compMax * 1.1) status = 'expensive';
+    if (compMin > 0 && myPrice < compMin * 0.9) status = 'cheap';
+
+    const row = {
+      store_id: storeId,
+      my_product: priceForm.my_product.trim(),
+      my_price: myPrice,
+      competitor_min: compMin,
+      competitor_max: compMax,
+      competitor_names: priceForm.competitor_names.trim() || null,
+      notes: priceForm.notes.trim() || null,
+      status,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (editPriceId) {
+      await supabase.from('price_compare').update(row).eq('id', editPriceId);
+    } else {
+      await supabase.from('price_compare').insert(row);
     }
-
-    async function deleteComp(id: string) {
-      if (!confirm('Xóa đối thủ này? (sẽ xóa luôn SP + reviews)')) return;
-      await supabase.from('competitors').delete().eq('id', id);
-      loadAll();
-    }
-
-    async function saveProduct(compId: string) {
-      if (!pForm.name.trim()) return;
-      await supabase.from('competitor_products').insert({
-        competitor_id: compId, store_id: activeStoreId, name: pForm.name,
-        price: parseInt(pForm.price) || 0, original_price: parseInt(pForm.original_price) || 0,
-        sold_count: parseInt(pForm.sold_count) || 0, rating: parseFloat(pForm.rating) || 0,
-        review_count: parseInt(pForm.review_count) || 0, offer: pForm.offer, product_url: pForm.product_url,
-      });
-      setPForm({ name: '', price: '', original_price: '', sold_count: '', rating: '', review_count: '', offer: '', product_url: '' });
-      setShowProductForm(null);
-      loadAll();
-    }
-
-    async function deleteProduct(id: string) {
-      await supabase.from('competitor_products').delete().eq('id', id);
-      loadAll();
-    }
-
-    return (
-      <>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{competitors.length}/20 đối thủ</div>
-          <button className="btn btn-primary" onClick={() => { setShowForm(true); setEditId(null); setForm({ name: '', platform: 'shopee', url: '', notes: '' }); }}>+ Thêm đối thủ</button>
-        </div>
-
-        {showForm && (
-          <div className="card" style={{ marginBottom: 16, padding: 20 }}>
-            <div className="card-title">{editId ? '✏️ Sửa đối thủ' : '🏪 Thêm đối thủ mới'}</div>
-            <div className="form-grid-2">
-              <div><label className="form-label">Tên shop *</label><input className="form-control" value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="VD: Shop ABC" /></div>
-              <div><label className="form-label">Nền tảng</label><select className="form-control" value={form.platform} onChange={e => setForm({...form, platform: e.target.value})}>{PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-              <div><label className="form-label">Link shop</label><input className="form-control" value={form.url} onChange={e => setForm({...form, url: e.target.value})} placeholder="https://..." /></div>
-              <div><label className="form-label">Ghi chú</label><input className="form-control" value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} /></div>
-            </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button className="btn btn-primary" onClick={saveCompetitor}>{editId ? 'Cập nhật' : 'Thêm'}</button>
-              <button className="btn btn-ghost" onClick={() => { setShowForm(false); setEditId(null); }}>Hủy</button>
-            </div>
-          </div>
-        )}
-
-        {competitors.map(c => {
-          const cProducts = products.filter(p => p.competitor_id === c.id);
-          return (
-            <div className="card" key={c.id} style={{ marginBottom: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 15 }}>{c.name}</div>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                    <span className="pill pill-data">{c.platform}</span>
-                    {c.url && <a href={c.url} target="_blank" rel="noopener" style={{ fontSize: 12, color: 'var(--accent)' }}>🔗 Link</a>}
-                    {c.notes && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{c.notes}</span>}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setShowProductForm(showProductForm === c.id ? null : c.id)}>+ SP</button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => { setEditId(c.id); setForm({ name: c.name, platform: c.platform, url: c.url || '', notes: c.notes || '' }); setShowForm(true); }}>✏️</button>
-                  <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => deleteComp(c.id)}>🗑</button>
-                </div>
-              </div>
-
-              {showProductForm === c.id && (
-                <div style={{ marginTop: 12, padding: 12, background: 'var(--bg-input)', borderRadius: 'var(--radius-sm)' }}>
-                  <div className="form-grid-2" style={{ gap: 8 }}>
-                    <input className="form-control" placeholder="Tên SP *" value={pForm.name} onChange={e => setPForm({...pForm, name: e.target.value})} />
-                    <input className="form-control" placeholder="Giá (VD: 199000)" type="number" value={pForm.price} onChange={e => setPForm({...pForm, price: e.target.value})} />
-                    <input className="form-control" placeholder="Giá gốc" type="number" value={pForm.original_price} onChange={e => setPForm({...pForm, original_price: e.target.value})} />
-                    <input className="form-control" placeholder="Lượt bán" type="number" value={pForm.sold_count} onChange={e => setPForm({...pForm, sold_count: e.target.value})} />
-                    <input className="form-control" placeholder="Rating (VD: 4.7)" value={pForm.rating} onChange={e => setPForm({...pForm, rating: e.target.value})} />
-                    <input className="form-control" placeholder="Offer (VD: mua 2 giảm 20K)" value={pForm.offer} onChange={e => setPForm({...pForm, offer: e.target.value})} />
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                    <button className="btn btn-primary btn-sm" onClick={() => saveProduct(c.id)}>Thêm SP</button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setShowProductForm(null)}>Hủy</button>
-                  </div>
-                </div>
-              )}
-
-              {cProducts.length > 0 && (
-                <div style={{ marginTop: 12 }}>
-                  <table className="styled-table" style={{ fontSize: 12 }}>
-                    <thead><tr><th>Sản phẩm</th><th>Giá</th><th>Bán</th><th>⭐</th><th>Offer</th><th></th></tr></thead>
-                    <tbody>
-                      {cProducts.map(p => (
-                        <tr key={p.id}>
-                          <td style={{ fontWeight: 500 }}>{p.name}</td>
-                          <td>{p.original_price > p.price ? <><s style={{color:'var(--text-muted)'}}>{(p.original_price/1000).toFixed(0)}K</s> <strong style={{color:'var(--red)'}}>{(p.price/1000).toFixed(0)}K</strong></> : `${(p.price/1000).toFixed(0)}K`}</td>
-                          <td>{p.sold_count > 999 ? `${(p.sold_count/1000).toFixed(1)}K` : p.sold_count}</td>
-                          <td>{p.rating || '—'}</td>
-                          <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{p.offer || '—'}</td>
-                          <td><button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)', padding: 2 }} onClick={() => deleteProduct(p.id)}>×</button></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </>
-    );
+    setPriceForm({ my_product: '', my_price: '', competitor_min: '', competitor_max: '', competitor_names: '', notes: '' });
+    setShowPriceForm(false);
+    setEditPriceId(null);
+    loadData();
   }
 
-  // ========== REVIEWS TAB ==========
-  function ReviewsTab() {
-    const [showForm, setShowForm] = useState(false);
-    const [filterCat, setFilterCat] = useState('all');
-    const [filterStars, setFilterStars] = useState(0);
-    const [form, setForm] = useState({ competitor_id: '', stars: '3', content: '', category: 'other', product_name: '' });
-    const [copied, setCopied] = useState(false);
+  function editPrice(p: PriceEntry) {
+    setPriceForm({
+      my_product: p.my_product,
+      my_price: String(p.my_price),
+      competitor_min: String(p.competitor_min),
+      competitor_max: String(p.competitor_max),
+      competitor_names: p.competitor_names || '',
+      notes: p.notes || '',
+    });
+    setEditPriceId(p.id);
+    setShowPriceForm(true);
+  }
 
-    async function saveReview() {
-      if (!form.content.trim() || !form.competitor_id) return;
-      await supabase.from('competitor_reviews').insert({
-        ...form, stars: parseInt(form.stars), store_id: activeStoreId,
-      });
-      setForm({ competitor_id: '', stars: '3', content: '', category: 'other', product_name: '' });
-      setShowForm(false);
-      loadAll();
-    }
+  async function deletePrice(id: string) {
+    if (!confirm('Xóa sản phẩm này?')) return;
+    await supabase.from('price_compare').delete().eq('id', id);
+    loadData();
+  }
 
-    async function deleteReview(id: string) {
-      await supabase.from('competitor_reviews').delete().eq('id', id);
-      loadAll();
-    }
-
-    const filtered = reviews.filter(r => {
-      if (filterCat !== 'all' && r.category !== filterCat) return false;
-      if (filterStars > 0 && r.stars !== filterStars) return false;
-      return true;
+  // ============ AI ACTIONS ============
+  function generateActionPrompt() {
+    const thisWeek = radarEntries.filter(r => {
+      const diff = (Date.now() - new Date(r.created_at).getTime()) / (1000 * 60 * 60 * 24);
+      return diff <= 7;
     });
 
-    // Generate AI prompt from collected reviews
-    function generatePrompt() {
-      const lines = reviews.slice(0, 20).map(r => `⭐ ${r.stars} - "${r.content}"${r.product_name ? ` (${r.product_name})` : ''}`).join('\n');
-      const prompt = `Bạn là product analyst cho shop thời trang nam.\n\nDưới đây là ${reviews.length} review 1-5 sao từ khách mua hàng của đối thủ:\n\n${lines}\n\nPhân tích:\n1. TOP 3 VẤN ĐỀ khách chê nhiều nhất?\n2. Mỗi vấn đề: SHOP TÔI có thể TRÁNH bằng cách nào?\n3. Đâu là CƠ HỘI để tôi làm TỐT HƠN đối thủ?\n4. Viết lại 3 USP cho shop tôi dựa trên điểm yếu đối thủ.\n5. Gợi ý 2-3 câu có thể dùng trong VIDEO/AD để đánh vào nỗi đau khách.`;
-      navigator.clipboard.writeText(prompt);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
+    const priceIssues = priceEntries.filter(p => p.status === 'expensive');
 
-    return (
-      <>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <select className="form-control" style={{ width: 'auto' }} value={filterCat} onChange={e => setFilterCat(e.target.value)}>
-              <option value="all">Tất cả</option>
-              {REVIEW_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <select className="form-control" style={{ width: 'auto' }} value={filterStars} onChange={e => setFilterStars(parseInt(e.target.value))}>
-              <option value="0">Mọi sao</option>
-              {[1,2,3,4,5].map(s => <option key={s} value={s}>{s} ⭐</option>)}
-            </select>
-            {reviews.length > 0 && (
-              <button className="btn btn-secondary btn-sm" onClick={generatePrompt}>
-                {copied ? '✅ Copied!' : '🤖 Tạo prompt AI'}
-              </button>
-            )}
-          </div>
-          <button className="btn btn-primary" onClick={() => setShowForm(true)}>+ Thêm review</button>
-        </div>
+    let prompt = `Bạn là chuyên gia tư vấn bán hàng thời trang online tại Việt Nam (Shopee, TikTok Shop).
 
-        {showForm && (
-          <div className="card" style={{ marginBottom: 16, padding: 20 }}>
-            <div className="card-title">⭐ Thêm review đối thủ</div>
-            <div className="form-grid-2">
-              <div>
-                <label className="form-label">Đối thủ *</label>
-                <select className="form-control" value={form.competitor_id} onChange={e => setForm({...form, competitor_id: e.target.value})}>
-                  <option value="">Chọn...</option>
-                  {competitors.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="form-label">Số sao</label>
-                <select className="form-control" value={form.stars} onChange={e => setForm({...form, stars: e.target.value})}>
-                  {[1,2,3,4,5].map(s => <option key={s} value={s}>{s} ⭐</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="form-label">Phân loại</label>
-                <select className="form-control" value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
-                  {REVIEW_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div><label className="form-label">Sản phẩm</label><input className="form-control" value={form.product_name} onChange={e => setForm({...form, product_name: e.target.value})} placeholder="Jean suông đen" /></div>
-            </div>
-            <div style={{ marginTop: 8 }}>
-              <label className="form-label">Nội dung review *</label>
-              <textarea className="form-control" rows={2} value={form.content} onChange={e => setForm({...form, content: e.target.value})} placeholder="VD: Vải mỏng, mặc 2 tuần đã xù" />
-            </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button className="btn btn-primary" onClick={saveReview}>Lưu</button>
-              <button className="btn btn-ghost" onClick={() => setShowForm(false)}>Hủy</button>
-            </div>
-          </div>
-        )}
+Dựa trên data quan sát thị trường tuần này của team BibleFashion, hãy tạo danh sách ACTION ITEMS theo 3 mức:
+🔴 KHẨN CẤP (ảnh hưởng doanh thu ngay)
+🟡 NÊN LÀM (cải thiện trong tuần)  
+🟢 THEO DÕI (cơ hội tương lai)
 
-        {filtered.length === 0 ? (
-          <div className="card" style={{ textAlign: 'center', padding: 30, color: 'var(--text-muted)' }}>Chưa có review. Thêm review đối thủ để bắt đầu phân tích!</div>
-        ) : (
-          <div className="card">
-            <table className="styled-table" style={{ fontSize: 12 }}>
-              <thead><tr><th>⭐</th><th>Review</th><th>Loại</th><th>SP</th><th>Đối thủ</th><th></th></tr></thead>
-              <tbody>
-                {filtered.map(r => (
-                  <tr key={r.id}>
-                    <td>{'⭐'.repeat(r.stars)}</td>
-                    <td style={{ maxWidth: 300 }}>{r.content}</td>
-                    <td><span className="pill pill-data">{r.category || 'other'}</span></td>
-                    <td style={{ fontSize: 11 }}>{r.product_name || '—'}</td>
-                    <td style={{ fontSize: 11 }}>{competitors.find(c => c.id === r.competitor_id)?.name || '—'}</td>
-                    <td><button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)', padding: 2 }} onClick={() => deleteReview(r.id)}>×</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </>
-    );
-  }
+Mỗi item cần: Việc cụ thể + Lý do + Deadline gợi ý.
 
-  // ========== ADS TAB ==========
-  function AdsTab() {
-    const [showForm, setShowForm] = useState(false);
-    const [filterFormat, setFilterFormat] = useState('all');
-    const [form, setForm] = useState({ competitor_id: '', platform: 'facebook', ad_text: '', format: 'video', offer: '', hook: '', url: '', notes: '' });
-    const [copied, setCopied] = useState(false);
+=== GHI CHÚ THỊ TRƯỜNG TUẦN NÀY (${thisWeek.length} entries) ===
+`;
 
-    async function saveAd() {
-      if (!form.ad_text.trim()) return;
-      await supabase.from('competitor_ads').insert({
-        ...form, store_id: activeStoreId, first_seen: new Date().toISOString().slice(0,10), last_seen: new Date().toISOString().slice(0,10),
+    thisWeek.forEach((r, i) => {
+      const cat = CATEGORIES.find(c => c.value === r.category)?.label || r.category;
+      prompt += `${i + 1}. [${cat}] ${r.note}${r.url ? ` (${r.url})` : ''}\n`;
+    });
+
+    if (priceIssues.length > 0) {
+      prompt += `\n=== SẢN PHẨM ĐANG ĐẮT HƠN THỊ TRƯỜNG ===\n`;
+      priceIssues.forEach(p => {
+        prompt += `• ${p.my_product}: Giá mình ${(p.my_price / 1000).toFixed(0)}K vs đối thủ ${(p.competitor_min / 1000).toFixed(0)}K-${(p.competitor_max / 1000).toFixed(0)}K\n`;
       });
-      setForm({ competitor_id: '', platform: 'facebook', ad_text: '', format: 'video', offer: '', hook: '', url: '', notes: '' });
-      setShowForm(false);
-      loadAll();
     }
 
-    async function deleteAd(id: string) {
-      await supabase.from('competitor_ads').delete().eq('id', id);
-      loadAll();
-    }
-
-    const filtered = filterFormat === 'all' ? ads : ads.filter(a => a.format === filterFormat);
-
-    function generateAdsPrompt() {
-      const lines = ads.slice(0, 10).map((a, i) => `AD ${i+1} (${competitors.find(c => c.id === a.competitor_id)?.name || '?'}): "${a.ad_text}" — ${a.format}${a.offer ? `, offer: ${a.offer}` : ''}`).join('\n');
-      const prompt = `Bạn là Facebook Ads strategist cho shop jean nam VN.\n\nTôi đã thu thập ${ads.length} ads đang chạy của đối thủ:\n\n${lines}\n\nPhân tích:\n1. AD nào ĐANG CHẠY LÂU NHẤT (= hiệu quả nhất)?\n2. HOOK nào hấp dẫn nhất? Tại sao?\n3. OFFER nào mạnh nhất?\n4. FORMAT nào đang trend?\n5. Viết cho tôi 5 AD COPY mới, tốt hơn các ads trên.`;
-      navigator.clipboard.writeText(prompt);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-
-    return (
-      <>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <select className="form-control" style={{ width: 'auto' }} value={filterFormat} onChange={e => setFilterFormat(e.target.value)}>
-              <option value="all">Mọi format</option>
-              {AD_FORMATS.map(f => <option key={f} value={f}>{f}</option>)}
-            </select>
-            {ads.length > 0 && <button className="btn btn-secondary btn-sm" onClick={generateAdsPrompt}>{copied ? '✅ Copied!' : '🤖 Tạo prompt AI'}</button>}
-          </div>
-          <button className="btn btn-primary" onClick={() => setShowForm(true)}>+ Thêm ad</button>
-        </div>
-
-        {showForm && (
-          <div className="card" style={{ marginBottom: 16, padding: 20 }}>
-            <div className="card-title">📢 Thêm ad đối thủ</div>
-            <div className="form-grid-2">
-              <div>
-                <label className="form-label">Đối thủ</label>
-                <select className="form-control" value={form.competitor_id} onChange={e => setForm({...form, competitor_id: e.target.value})}>
-                  <option value="">Chọn...</option>
-                  {competitors.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-              <div><label className="form-label">Platform</label><select className="form-control" value={form.platform} onChange={e => setForm({...form, platform: e.target.value})}><option value="facebook">Facebook</option><option value="tiktok">TikTok</option></select></div>
-              <div><label className="form-label">Format</label><select className="form-control" value={form.format} onChange={e => setForm({...form, format: e.target.value})}>{AD_FORMATS.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
-              <div><label className="form-label">Offer</label><input className="form-control" value={form.offer} onChange={e => setForm({...form, offer: e.target.value})} placeholder="VD: Freeship + đổi size free" /></div>
-              <div><label className="form-label">Hook (câu đầu)</label><input className="form-control" value={form.hook} onChange={e => setForm({...form, hook: e.target.value})} placeholder="VD: Anh em mặc jean 500K..." /></div>
-              <div><label className="form-label">Link ad</label><input className="form-control" value={form.url} onChange={e => setForm({...form, url: e.target.value})} /></div>
-            </div>
-            <div style={{ marginTop: 8 }}>
-              <label className="form-label">Nội dung ad *</label>
-              <textarea className="form-control" rows={3} value={form.ad_text} onChange={e => setForm({...form, ad_text: e.target.value})} placeholder="Copy text quảng cáo đầy đủ..." />
-            </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button className="btn btn-primary" onClick={saveAd}>Lưu</button>
-              <button className="btn btn-ghost" onClick={() => setShowForm(false)}>Hủy</button>
-            </div>
-          </div>
-        )}
-
-        {filtered.length === 0 ? (
-          <div className="card" style={{ textAlign: 'center', padding: 30, color: 'var(--text-muted)' }}>Chưa có ads. Thu thập ads đối thủ từ FB Ads Library!</div>
-        ) : (
-          <div style={{ display: 'grid', gap: 12 }}>
-            {filtered.map(a => (
-              <div className="card" key={a.id} style={{ position: 'relative' }}>
-                <button className="btn btn-ghost btn-sm" style={{ position: 'absolute', top: 8, right: 8, color: 'var(--red)', padding: 2 }} onClick={() => deleteAd(a.id)}>×</button>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                  <span className="pill pill-operation">{a.platform}</span>
-                  <span className="pill pill-content">{a.format}</span>
-                  {a.is_active && <span className="pill pill-data" style={{ background: 'var(--green-bg)', color: 'var(--green)' }}>Active</span>}
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>{competitors.find(c => c.id === a.competitor_id)?.name}</span>
-                </div>
-                {a.hook && <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)', marginBottom: 4 }}>🎣 {a.hook}</div>}
-                <div style={{ fontSize: 13, lineHeight: 1.5 }}>{a.ad_text}</div>
-                {a.offer && <div style={{ fontSize: 12, color: 'var(--green)', fontWeight: 600, marginTop: 6 }}>🎁 {a.offer}</div>}
-                {a.url && <a href={a.url} target="_blank" rel="noopener" style={{ fontSize: 11, color: 'var(--accent)', marginTop: 4, display: 'block' }}>🔗 Xem ad</a>}
-              </div>
-            ))}
-          </div>
-        )}
-      </>
-    );
-  }
-
-  // ========== TRENDS TAB ==========
-  function TrendsTab() {
-    const [showForm, setShowForm] = useState(false);
-    const [filterType, setFilterType] = useState('all');
-    const [form, setForm] = useState({ title: '', views: '', likes: '', hook: '', video_type: 'other', audio: '', url: '', creator: '' });
-    const [copied, setCopied] = useState(false);
-
-    async function saveTrend() {
-      if (!form.title.trim()) return;
-      await supabase.from('trend_videos').insert({
-        ...form, views: parseInt(form.views) || 0, likes: parseInt(form.likes) || 0, store_id: activeStoreId,
+    if (priceEntries.length > 0) {
+      prompt += `\n=== BẢNG GIÁ TỔNG QUAN ===\n`;
+      priceEntries.forEach(p => {
+        prompt += `• ${p.my_product}: ${(p.my_price / 1000).toFixed(0)}K (thị trường: ${(p.competitor_min / 1000).toFixed(0)}K-${(p.competitor_max / 1000).toFixed(0)}K) [${p.status}]\n`;
       });
-      setForm({ title: '', views: '', likes: '', hook: '', video_type: 'other', audio: '', url: '', creator: '' });
-      setShowForm(false);
-      loadAll();
     }
 
-    async function deleteTrend(id: string) {
-      await supabase.from('trend_videos').delete().eq('id', id);
-      loadAll();
-    }
+    prompt += `\nHãy phân tích và trả về danh sách action items bằng tiếng Việt, ngắn gọn, thực tế, có thể làm ngay.`;
 
-    const filtered = filterType === 'all' ? trends : trends.filter(t => t.video_type === filterType);
-
-    function generateTrendPrompt() {
-      const lines = trends.slice(0, 10).map((t, i) => `${i+1}. ${t.views > 999999 ? `${(t.views/1000000).toFixed(1)}M` : t.views > 999 ? `${(t.views/1000).toFixed(0)}K` : t.views} views - "${t.title}" - ${t.video_type}${t.audio ? `, audio: ${t.audio}` : ''}`).join('\n');
-      const prompt = `Bạn là trend analyst cho shop thời trang nam VN.\n\nTôi đã note ${trends.length} video TikTok hot nhất về jean nam:\n\n${lines}\n\nPhân tích:\n1. TOP 3 KIỂU VIDEO đang viral?\n2. HOOK phổ biến nhất?\n3. AUDIO/NHẠC trending?\n4. Video nào SHOP TÔI có thể LÀM NGAY?\n5. Viết 5 ý tưởng video cho shop jean nam 199K, bắt chước style đang viral.`;
-      navigator.clipboard.writeText(prompt);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-
-    return (
-      <>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <select className="form-control" style={{ width: 'auto' }} value={filterType} onChange={e => setFilterType(e.target.value)}>
-              <option value="all">Mọi loại</option>
-              {VIDEO_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-            {trends.length > 0 && <button className="btn btn-secondary btn-sm" onClick={generateTrendPrompt}>{copied ? '✅ Copied!' : '🤖 Tạo prompt AI'}</button>}
-          </div>
-          <button className="btn btn-primary" onClick={() => setShowForm(true)}>+ Thêm video</button>
-        </div>
-
-        {showForm && (
-          <div className="card" style={{ marginBottom: 16, padding: 20 }}>
-            <div className="card-title">🔥 Thêm video trending</div>
-            <div className="form-grid-2">
-              <div><label className="form-label">Tiêu đề *</label><input className="form-control" value={form.title} onChange={e => setForm({...form, title: e.target.value})} placeholder="VD: Mặc jean 100K vs 500K" /></div>
-              <div><label className="form-label">Views</label><input className="form-control" type="number" value={form.views} onChange={e => setForm({...form, views: e.target.value})} placeholder="VD: 2100000" /></div>
-              <div><label className="form-label">Likes</label><input className="form-control" type="number" value={form.likes} onChange={e => setForm({...form, likes: e.target.value})} /></div>
-              <div><label className="form-label">Loại video</label><select className="form-control" value={form.video_type} onChange={e => setForm({...form, video_type: e.target.value})}>{VIDEO_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-              <div><label className="form-label">Hook (câu đầu)</label><input className="form-control" value={form.hook} onChange={e => setForm({...form, hook: e.target.value})} /></div>
-              <div><label className="form-label">Audio trending</label><input className="form-control" value={form.audio} onChange={e => setForm({...form, audio: e.target.value})} /></div>
-              <div><label className="form-label">Creator</label><input className="form-control" value={form.creator} onChange={e => setForm({...form, creator: e.target.value})} /></div>
-              <div><label className="form-label">Link video</label><input className="form-control" value={form.url} onChange={e => setForm({...form, url: e.target.value})} /></div>
-            </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button className="btn btn-primary" onClick={saveTrend}>Lưu</button>
-              <button className="btn btn-ghost" onClick={() => setShowForm(false)}>Hủy</button>
-            </div>
-          </div>
-        )}
-
-        {filtered.length === 0 ? (
-          <div className="card" style={{ textAlign: 'center', padding: 30, color: 'var(--text-muted)' }}>Chưa có video. Lướt TikTok rồi note video hot ở đây!</div>
-        ) : (
-          <div className="card">
-            <table className="styled-table" style={{ fontSize: 12 }}>
-              <thead><tr><th>Video</th><th>Views</th><th>Loại</th><th>Hook</th><th>Audio</th><th></th></tr></thead>
-              <tbody>
-                {filtered.map(t => (
-                  <tr key={t.id}>
-                    <td style={{ fontWeight: 500, maxWidth: 200 }}>
-                      {t.url ? <a href={t.url} target="_blank" rel="noopener" style={{ color: 'var(--accent)' }}>{t.title}</a> : t.title}
-                      {t.creator && <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>@{t.creator}</div>}
-                    </td>
-                    <td style={{ fontWeight: 700 }}>{t.views > 999999 ? `${(t.views/1000000).toFixed(1)}M` : t.views > 999 ? `${(t.views/1000).toFixed(0)}K` : t.views}</td>
-                    <td><span className="pill pill-content">{t.video_type}</span></td>
-                    <td style={{ fontSize: 11, maxWidth: 150 }}>{t.hook || '—'}</td>
-                    <td style={{ fontSize: 11 }}>{t.audio || '—'}</td>
-                    <td><button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)', padding: 2 }} onClick={() => deleteTrend(t.id)}>×</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </>
-    );
+    setActionPrompt(prompt);
   }
 
-  // ========== MAIN RENDER ==========
-  if (loading) {
-    return (
-      <div style={{ padding: 20, opacity: 0.5 }}>
-        <div className="page-header"><div className="page-greeting">Đang tải Research... 🔍</div></div>
-        <div className="kpi-grid">{[1,2,3,4].map(i => <div className="kpi-card" key={i} style={{ minHeight: 80 }}><div style={{ background: 'var(--bg-card-border)', height: 14, width: '60%', borderRadius: 4, animation: 'pulse 1.5s infinite' }}></div></div>)}</div>
-      </div>
-    );
+  function copyPrompt() {
+    navigator.clipboard.writeText(actionPrompt);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
+  // ============ HELPERS ============
+  function timeAgo(date: string) {
+    const diff = (Date.now() - new Date(date).getTime()) / 1000;
+    if (diff < 60) return 'vừa xong';
+    if (diff < 3600) return `${Math.floor(diff / 60)} phút trước`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} giờ trước`;
+    if (diff < 604800) return `${Math.floor(diff / 86400)} ngày trước`;
+    return new Date(date).toLocaleDateString('vi');
+  }
+
+  function dayColor(date: string) {
+    const diff = (Date.now() - new Date(date).getTime()) / (1000 * 60 * 60 * 24);
+    if (diff < 1) return '#34d399';
+    if (diff < 3) return '#fbbf24';
+    return '#f87171';
+  }
+
+  const filteredRadar = radarFilter === 'all'
+    ? radarEntries
+    : radarEntries.filter(r => r.category === radarFilter);
+
+  const thisWeekCount = radarEntries.filter(r =>
+    (Date.now() - new Date(r.created_at).getTime()) / (1000 * 60 * 60 * 24) <= 7
+  ).length;
+
+  const expensiveCount = priceEntries.filter(p => p.status === 'expensive').length;
+
+  // ============ RENDER ============
   return (
     <div>
-      <div className="page-header">
-        <h1 className="page-title">🔍 Research Center</h1>
-        <p className="text-secondary">Thu thập & phân tích đối thủ, review, ads, trends — {competitors.length} đối thủ đang tracking</p>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>📡 Radar Thị Trường</h1>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+          Quan sát → So sánh → Hành động — {thisWeekCount} ghi chú tuần này
+          {expensiveCount > 0 && <span style={{ color: '#f87171', marginLeft: 8 }}>⚠️ {expensiveCount} SP đang đắt</span>}
+        </p>
       </div>
 
-      <div className="tab-bar" style={{ marginBottom: 20 }}>
-        {TABS.map(t => (
-          <div key={t.key} className={`sub-tab ${tab === t.key ? 'active' : ''}`} onClick={() => setTab(t.key)}>
-            {t.icon} {t.label}
-          </div>
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid var(--bg-card-border)', paddingBottom: 2 }}>
+        {[
+          { key: 'radar', label: '📡 Radar', count: thisWeekCount },
+          { key: 'price', label: '💰 So giá', count: priceEntries.length },
+          { key: 'actions', label: '🧠 Action Items' },
+        ].map(t => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key as typeof tab)}
+            style={{
+              padding: '10px 18px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+              fontFamily: 'var(--font-main)',
+              background: tab === t.key ? 'var(--bg-card)' : 'transparent',
+              color: tab === t.key ? 'var(--text-primary)' : 'var(--text-muted)',
+              borderBottom: tab === t.key ? '2px solid var(--accent)' : '2px solid transparent',
+              borderRadius: '8px 8px 0 0',
+              transition: 'all 0.2s',
+            }}
+          >
+            {t.label} {'count' in t && t.count ? <span style={{ marginLeft: 6, fontSize: 11, background: 'var(--accent-soft)', color: 'var(--accent)', padding: '1px 6px', borderRadius: 4 }}>{t.count}</span> : null}
+          </button>
         ))}
       </div>
 
-      {tab === 'overview' && <OverviewTab />}
-      {tab === 'competitors' && <CompetitorsTab />}
-      {tab === 'reviews' && <ReviewsTab />}
-      {tab === 'ads' && <AdsTab />}
-      {tab === 'trends' && <TrendsTab />}
+      {/* ============ TAB: RADAR ============ */}
+      {tab === 'radar' && (
+        <div>
+          {/* Add button */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button onClick={() => setRadarFilter('all')} className="btn btn-sm" style={{ background: radarFilter === 'all' ? 'var(--accent)' : 'var(--bg-card)', color: radarFilter === 'all' ? 'white' : 'var(--text-secondary)', border: '1px solid var(--bg-card-border)' }}>Tất cả</button>
+              {CATEGORIES.map(c => (
+                <button key={c.value} onClick={() => setRadarFilter(c.value)} className="btn btn-sm" style={{ background: radarFilter === c.value ? c.color : 'var(--bg-card)', color: radarFilter === c.value ? 'white' : 'var(--text-secondary)', border: '1px solid var(--bg-card-border)' }}>
+                  {c.label.split(' ')[0]}
+                </button>
+              ))}
+            </div>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowRadarForm(!showRadarForm)}>
+              {showRadarForm ? '✕ Đóng' : '+ Ghi chú mới'}
+            </button>
+          </div>
+
+          {/* Form */}
+          {showRadarForm && (
+            <div className="card" style={{ marginBottom: 20, border: '1px solid var(--accent)', background: 'rgba(124,108,240,0.03)' }}>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>📡 Ghi nhanh — Hôm nay thấy gì?</div>
+              <div className="form-grid-2">
+                <div>
+                  <label className="form-label">Loại</label>
+                  <select className="form-control" value={radarForm.category} onChange={e => setRadarForm({ ...radarForm, category: e.target.value })}>
+                    {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="form-label">Người ghi</label>
+                  <input className="form-control" value={radarForm.created_by} onChange={e => setRadarForm({ ...radarForm, created_by: e.target.value })} placeholder="Tên bạn" />
+                </div>
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <label className="form-label">Ghi chú *</label>
+                <textarea className="form-control" rows={3} value={radarForm.note} onChange={e => setRadarForm({ ...radarForm, note: e.target.value })} placeholder='VD: Shop GenZ giảm quần jean baggy từ 250K xuống 189K, freeship, đang bán 2K+/tháng' />
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <label className="form-label">Link (tuỳ chọn)</label>
+                <input className="form-control" value={radarForm.url} onChange={e => setRadarForm({ ...radarForm, url: e.target.value })} placeholder="https://shopee.vn/... hoặc TikTok link" />
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-primary btn-sm" onClick={addRadar} disabled={!radarForm.note.trim()}>💾 Lưu</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setShowRadarForm(false)}>Hủy</button>
+              </div>
+            </div>
+          )}
+
+          {/* Feed */}
+          {filteredRadar.length === 0 ? (
+            <div className="card" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>📡</div>
+              <div>Chưa có ghi chú nào</div>
+              <div style={{ fontSize: 12, marginTop: 4 }}>Lướt Shopee/TikTok 10 phút rồi ghi lại điều đáng chú ý!</div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {filteredRadar.map(entry => {
+                const cat = CATEGORIES.find(c => c.value === entry.category);
+                return (
+                  <div key={entry.id} className="card" style={{ padding: '14px 18px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: dayColor(entry.created_at), marginTop: 7, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 8px', borderRadius: 4, background: `${cat?.color}20`, color: cat?.color }}>{cat?.label}</span>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{timeAgo(entry.created_at)}</span>
+                        {entry.created_by && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>• {entry.created_by}</span>}
+                      </div>
+                      <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.5 }}>{entry.note}</div>
+                      {entry.url && (
+                        <a href={entry.url} target="_blank" rel="noopener" style={{ fontSize: 11, color: 'var(--accent)', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 4, textDecoration: 'none' }}>
+                          🔗 {entry.url.length > 50 ? entry.url.slice(0, 50) + '...' : entry.url}
+                        </a>
+                      )}
+                    </div>
+                    <button onClick={() => deleteRadar(entry.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, padding: 4, opacity: 0.5 }} title="Xóa">×</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ============ TAB: PRICE ============ */}
+      {tab === 'price' && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+              {priceEntries.length} sản phẩm đang theo dõi
+              {expensiveCount > 0 && <span style={{ color: '#f87171', marginLeft: 8 }}>• {expensiveCount} đang đắt hơn thị trường</span>}
+            </div>
+            <button className="btn btn-primary btn-sm" onClick={() => { setShowPriceForm(!showPriceForm); setEditPriceId(null); setPriceForm({ my_product: '', my_price: '', competitor_min: '', competitor_max: '', competitor_names: '', notes: '' }); }}>
+              {showPriceForm ? '✕ Đóng' : '+ Thêm sản phẩm'}
+            </button>
+          </div>
+
+          {/* Form */}
+          {showPriceForm && (
+            <div className="card" style={{ marginBottom: 20, border: '1px solid var(--accent)', background: 'rgba(124,108,240,0.03)' }}>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>{editPriceId ? '✏️ Sửa sản phẩm' : '💰 Thêm sản phẩm so giá'}</div>
+              <div className="form-grid-2">
+                <div>
+                  <label className="form-label">Sản phẩm của mình *</label>
+                  <input className="form-control" value={priceForm.my_product} onChange={e => setPriceForm({ ...priceForm, my_product: e.target.value })} placeholder="VD: Quần jean baggy wash" />
+                </div>
+                <div>
+                  <label className="form-label">Giá mình (₫) *</label>
+                  <input className="form-control" type="number" value={priceForm.my_price} onChange={e => setPriceForm({ ...priceForm, my_price: e.target.value })} placeholder="225000" />
+                </div>
+              </div>
+              <div className="form-grid-2">
+                <div>
+                  <label className="form-label">Giá đối thủ thấp nhất (₫)</label>
+                  <input className="form-control" type="number" value={priceForm.competitor_min} onChange={e => setPriceForm({ ...priceForm, competitor_min: e.target.value })} placeholder="189000" />
+                </div>
+                <div>
+                  <label className="form-label">Giá đối thủ cao nhất (₫)</label>
+                  <input className="form-control" type="number" value={priceForm.competitor_max} onChange={e => setPriceForm({ ...priceForm, competitor_max: e.target.value })} placeholder="280000" />
+                </div>
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <label className="form-label">Chi tiết đối thủ</label>
+                <input className="form-control" value={priceForm.competitor_names} onChange={e => setPriceForm({ ...priceForm, competitor_names: e.target.value })} placeholder="Shop A: 189K, Shop B: 199K, Shop C: 250K" />
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <label className="form-label">Ghi chú</label>
+                <input className="form-control" value={priceForm.notes} onChange={e => setPriceForm({ ...priceForm, notes: e.target.value })} placeholder="Đối thủ đang giảm giá mạnh" />
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-primary btn-sm" onClick={addOrUpdatePrice} disabled={!priceForm.my_product.trim()}>💾 {editPriceId ? 'Cập nhật' : 'Lưu'}</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => { setShowPriceForm(false); setEditPriceId(null); }}>Hủy</button>
+              </div>
+            </div>
+          )}
+
+          {/* Price Table */}
+          {priceEntries.length === 0 ? (
+            <div className="card" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>💰</div>
+              <div>Chưa có sản phẩm nào</div>
+              <div style={{ fontSize: 12, marginTop: 4 }}>Thêm sản phẩm của bạn + giá đối thủ để so sánh</div>
+            </div>
+          ) : (
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <table className="task-table" style={{ width: '100%' }}>
+                <thead>
+                  <tr>
+                    <th>SẢN PHẨM CỦA MÌNH</th>
+                    <th style={{ textAlign: 'right' }}>GIÁ MÌNH</th>
+                    <th style={{ textAlign: 'right' }}>ĐỐI THỦ</th>
+                    <th style={{ textAlign: 'center' }}>STATUS</th>
+                    <th style={{ textAlign: 'center' }}>CHI TIẾT</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {priceEntries.map(p => {
+                    const st = STATUS_MAP[p.status] || STATUS_MAP.ok;
+                    const diff = p.competitor_max > 0 ? ((p.my_price - p.competitor_max) / p.competitor_max * 100).toFixed(0) : null;
+                    return (
+                      <tr key={p.id}>
+                        <td>
+                          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{p.my_product}</div>
+                          {p.notes && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{p.notes}</div>}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 14 }}>
+                          {(p.my_price / 1000).toFixed(0)}K
+                        </td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--text-secondary)' }}>
+                          {p.competitor_min > 0 ? `${(p.competitor_min / 1000).toFixed(0)}K - ${(p.competitor_max / 1000).toFixed(0)}K` : '—'}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 10px', borderRadius: 6, background: st.bg, color: st.color }}>
+                            {st.label} {diff && p.status === 'expensive' ? `(+${diff}%)` : ''}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-muted)', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {p.competitor_names || '—'}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <button onClick={() => editPrice(p)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, marginRight: 4 }} title="Sửa">✏️</button>
+                          <button onClick={() => deletePrice(p.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f87171', fontSize: 12 }} title="Xóa">×</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Price Insight */}
+          {expensiveCount > 0 && (
+            <div className="card" style={{ marginTop: 16, border: '1px solid rgba(248,113,113,0.3)', background: 'rgba(248,113,113,0.03)' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#f87171', marginBottom: 8 }}>💡 Gợi ý điều chỉnh giá</div>
+              {priceEntries.filter(p => p.status === 'expensive').map(p => (
+                <div key={p.id} style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6, paddingLeft: 12, borderLeft: '2px solid #f87171' }}>
+                  <strong>{p.my_product}</strong>: Đang bán <strong>{(p.my_price / 1000).toFixed(0)}K</strong> — thị trường <strong>{(p.competitor_min / 1000).toFixed(0)}K-{(p.competitor_max / 1000).toFixed(0)}K</strong>
+                  {p.competitor_max > 0 && <span> → Xem xét giảm về <strong>{(p.competitor_max / 1000).toFixed(0)}K</strong> hoặc thêm offer</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ============ TAB: ACTION ITEMS ============ */}
+      {tab === 'actions' && (
+        <div>
+          <div className="card" style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>🧠 AI Tổng Hợp Action Items</div>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.6 }}>
+              AI sẽ đọc hết <strong>{thisWeekCount} ghi chú</strong> từ Radar + <strong>{priceEntries.length} sản phẩm</strong> so giá
+              → tạo ra danh sách việc cần làm tuần này, chia theo mức độ ưu tiên.
+            </p>
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn btn-primary" onClick={generateActionPrompt}>
+                🤖 Tạo prompt AI
+              </button>
+              {actionPrompt && (
+                <button className="btn btn-secondary" onClick={copyPrompt}>
+                  {copied ? '✅ Đã copy!' : '📋 Copy prompt'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {actionPrompt ? (
+            <div className="card" style={{ background: 'rgba(124,108,240,0.03)', border: '1px solid rgba(124,108,240,0.2)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>📋 Prompt đã tạo</div>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Paste vào ChatGPT / Gemini</span>
+              </div>
+              <pre style={{ fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.6, background: 'rgba(0,0,0,0.2)', padding: 16, borderRadius: 8, maxHeight: 400, overflow: 'auto' }}>
+                {actionPrompt}
+              </pre>
+              <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)' }}>
+                👉 <strong>Bước tiếp:</strong> Copy prompt → Paste vào <a href="https://chat.openai.com" target="_blank" rel="noopener" style={{ color: 'var(--accent)' }}>ChatGPT</a> hoặc <a href="https://gemini.google.com" target="_blank" rel="noopener" style={{ color: 'var(--accent)' }}>Gemini</a> → Nhận action items
+              </div>
+            </div>
+          ) : (
+            <div className="card" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>🧠</div>
+              <div>Bấm "Tạo prompt AI" để bắt đầu</div>
+              <div style={{ fontSize: 12, marginTop: 4 }}>Cần ít nhất 3 ghi chú Radar để AI phân tích hiệu quả</div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

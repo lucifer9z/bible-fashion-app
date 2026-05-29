@@ -13,7 +13,7 @@ const navSections = [
   {
     label: 'BÁN HÀNG',
     items: [
-      { href: '/research', label: 'Research', icon: '🔍' },
+      { href: '/research', label: 'Radar', icon: '📡' },
       { href: '/bible/02-SOURCING', label: 'Sourcing', icon: '🏭' },
       { href: '/bible/03-OFFER', label: 'Offer', icon: '💰' },
       { href: '/bible/04-CONTENT', label: 'Content', icon: '🎬' },
