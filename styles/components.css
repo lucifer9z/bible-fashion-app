@@ -514,3 +514,18 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   margin-bottom: 4px;
 }
 
+
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.form-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
