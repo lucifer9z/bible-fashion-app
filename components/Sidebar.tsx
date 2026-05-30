@@ -52,7 +52,7 @@ export default function Sidebar() {
     <aside className="sidebar">
       <div className="sidebar-brand">
         <div className="sidebar-brand-icon">📖</div>
-        <span>BibleFashion</span>
+        <span>GIA ANH SOP</span>
       </div>
 
       <div className="sidebar-search">

@@ -1,5 +1,5 @@
 -- ==========================================
--- BibleFashion — Research v2: Radar Thị Trường
+-- GIA ANH SOP — Research v2: Radar Thị Trường
 -- Copy toàn bộ → Supabase SQL Editor → Run
 -- ==========================================
 

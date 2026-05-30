@@ -70,7 +70,7 @@ export default function StoresPage() {
           <input
             className="form-control"
             style={{ flex: 1, minWidth: 200 }}
-            placeholder="Tên cửa hàng (VD: BibleFashion HCM)"
+            placeholder="Tên cửa hàng (VD: GIA ANH SOP HCM)"
             value={newName}
             onChange={e => setNewName(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && addStore()}

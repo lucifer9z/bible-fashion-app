@@ -1,5 +1,5 @@
 -- ==========================================
--- BibleFashion — Research Module Tables
+-- GIA ANH SOP — Research Module Tables
 -- Copy toàn bộ → Supabase SQL Editor → Run
 -- ==========================================
 

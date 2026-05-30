@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Radar Thị Trường | BibleFashion',
+  title: 'Radar Thị Trường | GIA ANH SOP',
   description: 'Quan sát thị trường, so giá đối thủ, AI tổng hợp action items hàng tuần',
 };
 

@@ -15,7 +15,7 @@ ALTER TABLE stores ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all stores" ON stores FOR ALL USING (true) WITH CHECK (true);
 
 -- 2. Insert default store
-INSERT INTO stores (name, icon, color) VALUES ('BibleFashion', '👔', '#7c6cf0');
+INSERT INTO stores (name, icon, color) VALUES ('GIA ANH SOP', '👔', '#7c6cf0');
 
 -- 3. Add store_id to all data tables
 ALTER TABLE daily_data ADD COLUMN IF NOT EXISTS store_id UUID REFERENCES stores(id);

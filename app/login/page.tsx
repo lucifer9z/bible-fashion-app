@@ -25,11 +25,11 @@ export default function LoginPage() {
   }
 
   const accounts = [
-    { email: 'leader@biblefashion.local', role: '👑 Leader' },
-    { email: 'ads@biblefashion.local', role: '📢 Ads' },
-    { email: 'media@biblefashion.local', role: '🎬 Media' },
-    { email: 'san@biblefashion.local', role: '💬 Sàn' },
-    { email: 'fulfillment@biblefashion.local', role: '📦 Fulfillment' },
+    { email: 'leader@giaanhsop.local', role: '👑 Leader' },
+    { email: 'ads@giaanhsop.local', role: '📢 Ads' },
+    { email: 'media@giaanhsop.local', role: '🎬 Media' },
+    { email: 'san@giaanhsop.local', role: '💬 Sàn' },
+    { email: 'fulfillment@giaanhsop.local', role: '📦 Fulfillment' },
   ];
 
   return (
@@ -37,14 +37,14 @@ export default function LoginPage() {
       <div className="card" style={{ padding: 40, maxWidth: 420, width: '100%' }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{ fontSize: 40, marginBottom: 8 }}>📖</div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, background: 'linear-gradient(135deg, #7c6cf0, #a78bfa, #c084fc)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>BibleFashion</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 800, background: 'linear-gradient(135deg, #7c6cf0, #a78bfa, #c084fc)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>GIA ANH SOP</h1>
           <p className="text-muted" style={{ fontSize: 13 }}>Hệ thống quản lý bán hàng</p>
         </div>
 
         <form onSubmit={handleLogin}>
           <div className="input-group">
             <label>Email</label>
-            <input className="form-control" type="email" placeholder="leader@biblefashion.local" value={email} onChange={e => setEmail(e.target.value)} required />
+            <input className="form-control" type="email" placeholder="leader@giaanhsop.local" value={email} onChange={e => setEmail(e.target.value)} required />
           </div>
           <div className="input-group">
             <label>Mật khẩu</label>

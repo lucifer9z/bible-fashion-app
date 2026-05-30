@@ -153,7 +153,7 @@ export default function ResearchPage() {
 
     let prompt = `Bạn là chuyên gia tư vấn bán hàng thời trang online tại Việt Nam (Shopee, TikTok Shop).
 
-Dựa trên data quan sát thị trường tuần này của team BibleFashion, hãy tạo danh sách ACTION ITEMS theo 3 mức:
+Dựa trên data quan sát thị trường tuần này của team GIA ANH SOP, hãy tạo danh sách ACTION ITEMS theo 3 mức:
 🔴 KHẨN CẤP (ảnh hưởng doanh thu ngay)
 🟡 NÊN LÀM (cải thiện trong tuần)  
 🟢 THEO DÕI (cơ hội tương lai)

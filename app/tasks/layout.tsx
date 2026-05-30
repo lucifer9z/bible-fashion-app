@@ -1,3 +1,3 @@
 import type { Metadata } from 'next';
-export const metadata: Metadata = { title: 'Tasks — BibleFashion' };
+export const metadata: Metadata = { title: 'Tasks — GIA ANH SOP' };
 export default function Layout({ children }: { children: React.ReactNode }) { return children; }

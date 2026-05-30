@@ -1,5 +1,5 @@
 -- ==========================================
--- BibleFashion — FULL DATABASE (chạy 1 lần)
+-- GIA ANH SOP — FULL DATABASE (chạy 1 lần)
 -- Copy toàn bộ → Supabase SQL Editor → Run
 -- ==========================================
 
@@ -127,6 +127,6 @@ CREATE POLICY "Allow all" ON content_items FOR ALL USING (true) WITH CHECK (true
 CREATE POLICY "Allow all" ON settings FOR ALL USING (true) WITH CHECK (true);
 
 -- 10. Default data
-INSERT INTO stores (name, icon, color) VALUES ('BibleFashion', '👔', '#7c6cf0');
+INSERT INTO stores (name, icon, color) VALUES ('GIA ANH SOP', '👔', '#7c6cf0');
 INSERT INTO settings (key, value) VALUES ('start_date', NULL);
-INSERT INTO settings (key, value) VALUES ('project_name', 'BibleFashion');
+INSERT INTO settings (key, value) VALUES ('project_name', 'GIA ANH SOP');

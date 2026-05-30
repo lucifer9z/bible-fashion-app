@@ -3,7 +3,7 @@ import './globals.css';
 import AppShell from '@/components/AppShell';
 
 export const metadata: Metadata = {
-  title: 'BibleFashion — Hệ thống quản lý bán hàng',
+  title: 'GIA ANH SOP — Hệ thống quản lý bán hàng',
   description: 'Kinh thánh bán hàng thời trang nam online — quản lý, nhắc việc, kiểm soát',
 };
 
